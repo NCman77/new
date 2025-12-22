@@ -1,0 +1,40 @@
+name: Daily Lottery Update
+
+on:
+  schedule:
+    # UTC 14:00 = Taiwan 22:00
+    - cron: '0 14 * * *'
+    # UTC 14:05 = Taiwan 22:05 (Double check)
+    - cron: '5 14 * * *'
+  workflow_dispatch: # 允許手動點擊執行
+
+permissions:
+  contents: write
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run Data Builder
+        run: |
+          python scripts/build_data.py
+
+      - name: Commit and Push changes
+        run: |
+          git config --global user.name "Lottery Bot"
+          git config --global user.email "bot@github.com"
+          git add data/lottery-data.json
+          git commit -m "Auto-update lottery data $(date +'%Y-%m-%d')" || exit 0
+          git push
