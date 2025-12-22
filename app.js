@@ -787,11 +787,7 @@ const App = {
     }
 };
 
-// ==================== 掛載到 Window (供 HTML onclick 使用) ====================
-window.app = App;
-window.onload = () => App.init();
-
-// 橋接函式:讓 HTML 直接呼叫服務模組
+// ==================== HTML 橋接函式 (供 onclick 使用) ====================
 window.appBridge = {
     // Firebase 認證
     loginGoogle: () => FirebaseService.loginGoogle(),
@@ -811,6 +807,11 @@ window.appBridge = {
     setDrawOrder: (order) => App.setDrawOrder(order)
 };
 
+// ==================== 暴露 App 到全域 (讓 HTML onclick 能訪問) ====================
+window.app = App;
 
-
-
+// ==================== 初始化應用程式 ====================
+window.onload = () => {
+    console.log('🚀 應用程式初始化中...');
+    App.init();
+};
