@@ -5,6 +5,8 @@
  */
 
 import { FirebaseService } from './firebase.js';
+import { getGanZhi } from '../utils.js';
+
 
 export const ProfileService = {
     profiles: [],
@@ -224,9 +226,6 @@ export const ProfileService = {
 
         const p = this.profiles.find(x => x.id == pid);
         const currentYear = new Date().getFullYear();
-
-        // 使用 utils.js 的函式
-        const { getGanZhi } = await import('../utils.js');
         const ganZhi = getGanZhi(currentYear);
 
         const useName = document.getElementById('check-name')
