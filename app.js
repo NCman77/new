@@ -123,21 +123,7 @@ const App = {
         this.setSystemStatus('loading');
 
         try {
-            // Phase 0：Firebase 快取
-            const db = FirebaseService.getDB();
-            if (db) {
-                try {
-                    const fbData = await loadFromFirestore(db);
-                    if (fbData && Object.keys(fbData).length > 0) {
-                        const quickData = mergeLotteryData({ games: {} }, [], fbData, null);
-                        this.processAndRender(quickData);
-                    }
-                } catch (e) {
-                    console.warn("Firebase 快取讀取失敗，改用完整載入", e);
-                }
-            }
-
-            // Phase 1：靜態 JSON + ZIP + Local Cache + Firestore
+            // Phase 1：靜態 JSON + ZIP + Local Cache
             const jsonRes = await fetch(`${CONFIG.JSON_URL}?t=${new Date().getTime()}`);
             let baseData = {};
             if (jsonRes.ok) {
@@ -161,16 +147,12 @@ const App = {
             const zipResults = await Promise.all(zipPromises);
 
             const localCache = loadFromCache()?.data || {};
-            let firestoreData = {};
-            if (this.state.db) {
-                firestoreData = await loadFromFirestore(this.state.db);
-            }
 
             const initialData = mergeLotteryData(
                 { games: baseData },
                 zipResults,
                 localCache,
-                firestoreData
+                null
             );
             this.processAndRender(initialData);
 
@@ -194,7 +176,7 @@ const App = {
                     { games: baseData },
                     zipResults,
                     liveData,
-                    firestoreData
+                    null
                 );
                 this.processAndRender(finalData);
                 if (this.state.currentGame) {
@@ -204,12 +186,6 @@ const App = {
                     saveToCache(liveData);
                 } catch (e) {
                     console.warn("Local Cache 寫入失敗:", e);
-                }
-
-                const db = FirebaseService.getDB();
-                if (db) {
-                    saveToFirestore(db, liveData)
-                        .catch(e => console.warn("Firestore 寫入失敗:", e));
                 }
             }
 
