@@ -808,6 +808,8 @@ window.appBridge = {
 };
 
 // ==================== 暴露 App 到全域 (讓 HTML onclick 能訪問) ====================
+// 將 appBridge 的方法注入到 App 物件 (為了兼容 HTML onclick="app.xxx()")
+Object.assign(App, window.appBridge);
 window.app = App;
 
 // ==================== 初始化應用程式 ====================
