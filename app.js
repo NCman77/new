@@ -8,7 +8,7 @@ import { GAME_CONFIG } from './game_config.js';
 import {
     monteCarloSim, calculateZone,
     fetchAndParseZip, mergeLotteryData, fetchLiveLotteryData,
-    saveToCache, saveToFirestore, loadFromFirestore, loadFromCache
+    saveToCache, loadFromCache
 } from './utils.js';
 
 // 服務模組
