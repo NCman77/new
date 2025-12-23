@@ -140,7 +140,6 @@ export const PredictionEngine = {
      * @param {Object} context.ProfileService - Profile 服務
      */
     runWuxingAlgo({ params, gameDef, ProfileService }) {
-        console.log(`[Wuxing] 五行學派 | ${gameDef.type} | ${params.data.length}期`);
         const wuxingWeights = {};
         const wuxingTagMap = {};
         const min = (gameDef.type === 'digit' ? 0 : 1);
@@ -191,6 +190,8 @@ export const PredictionEngine = {
         const dominant = tags.sort((a, b) =>
             tags.filter(v => v === a).length - tags.filter(v => v === b).length
         ).pop();
+
+        console.log(`[Wuxing] 分析中...設定檔: ${profile ? profile.name : '預設'} | 主導五行: ${dominant}`);
 
         return {
             numbers: [...pickZone1, ...pickZone2],
