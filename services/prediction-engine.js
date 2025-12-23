@@ -75,7 +75,9 @@ export const PredictionEngine = {
 
         // --- 其他學派邏輯 (Loop + SmartWheel) ---
         const count = isPack ? 3 : 5;
+        // V8.7.3.1 Hotfix: 數字型彩票允許號碼重複
         const excludeSet = new Set();
+        const allowDuplicates = (gameDef.type === 'digit');
         const packPool = [];
 
         for (let i = 0; i < count; i++) {
@@ -83,7 +85,7 @@ export const PredictionEngine = {
                 data,
                 gameDef,
                 subModeId: state.currentSubMode,
-                excludeNumbers: excludeSet,
+                excludeNumbers: allowDuplicates ? new Set() : excludeSet,
                 random: isRandom,
                 mode: isRandom ? 'random' : 'strict',
                 setIndex: i
@@ -114,7 +116,10 @@ export const PredictionEngine = {
                 if (!monteCarloSim(result.numbers, gameDef)) { /* fallback */ }
 
                 result.numbers.forEach(n => {
-                    excludeSet.add(n.val);
+                    // V8.7.3.1 Hotfix: 只有非數字型彩票才累積排除
+                    if (!allowDuplicates) {
+                        excludeSet.add(n.val);
+                    }
                     if (isPack) packPool.push(n.val);
                 });
 
