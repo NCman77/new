@@ -627,8 +627,12 @@ const App = {
         };
         const posNames = posNameMapByGame[this.state.currentGame] || null;
 
+        const isCandidate = resultObj.metadata?.isCandidate;
+        const clickAttr = isCandidate ? `onclick="app.handleCandidateClick(${JSON.stringify(resultObj.numbers).replace(/"/g, '&quot;')})"` : '';
+        const hoverClass = isCandidate ? 'cursor-pointer hover:bg-stone-50 active:scale-95 border-purple-200' : 'border-stone-200';
+
         let html = `
-          <div class="flex flex-col gap-2 p-4 bg-white rounded-xl border border-stone-200 shadow-sm animate-fade-in hover:shadow-md transition">
+          <div ${clickAttr} class="flex flex-col gap-2 p-4 bg-white rounded-xl border ${hoverClass} shadow-sm animate-fade-in hover:shadow-md transition">
             <div class="flex items-center gap-3">
               <span class="text-[10px] font-black text-stone-300 tracking-widest uppercase">${displayLabel}</span>
               <div class="flex flex-wrap gap-2">
@@ -671,6 +675,35 @@ const App = {
 
         html += `</div>`;
         container.innerHTML += html;
+    },
+
+    /**
+     * 處理候選號碼點擊 (互動式包牌第二階段)
+     */
+    handleCandidateClick(numbers) {
+        console.log('🎯 執行包牌擴展...', numbers);
+        const gameDef = GAME_CONFIG.GAMES[this.state.currentGame];
+        const container = document.getElementById('prediction-output');
+
+        // 1. 取得擴展注數
+        const expandedTickets = PredictionEngine.expandPack(numbers, gameDef);
+
+        if (expandedTickets.length > 0) {
+            // 2. 清空候選區並重新渲染最終結果
+            container.innerHTML = `
+                <div class="mb-4 p-4 bg-purple-50 rounded-xl border border-purple-100 flex items-center justify-between">
+                    <div class="text-purple-800 font-bold text-sm">✨ 已根據選定號碼生成包牌成果 (${expandedTickets.length} 注)</div>
+                    <button onclick="app.runPrediction()" class="text-xs bg-white text-purple-600 px-3 py-1 rounded-lg border border-purple-200 hover:bg-purple-600 hover:text-white transition">返回選號</button>
+                </div>
+            `;
+
+            expandedTickets.forEach((res, idx) => {
+                this.renderRow(res, idx + 1, `<span class="text-purple-600 font-bold">🎯 包牌組合 ${idx + 1}</span>`);
+            });
+
+            // 滾動到頂部
+            document.getElementById('result-area').scrollIntoView({ behavior: 'smooth' });
+        }
     },
 
 
