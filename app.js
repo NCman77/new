@@ -22,7 +22,7 @@ import { algoStat } from './algo/algo_stat.js';
 import { algoPattern } from './algo/algo_pattern.js';
 import { algoBalance } from './algo/algo_balance.js';
 import { algoAI } from './algo/algo_ai.js';
-import { algoSmartWheel as generateSmartWheel } from './algo/algo_smartwheel.js';
+import { algoAI } from './algo/algo_ai.js';
 
 // 五行學派子系統(紫微 / 姓名 / 星盤 / 五行生肖)
 import { applyZiweiLogic } from './algo/algo_Ziwei.js';
