@@ -861,8 +861,6 @@ function pattern_handleComboSingle(data, gameDef, excludeNumbers, mode, setIndex
   const checkSet = new Set(excludeNumbers);
   const stats = { drag: 0, neighbor: 0, tail: 0, hot: 0 };
 
-  console.log(`[Pattern] 候選分配: 拖牌(${dragCandidates.length || 0}) 鄰號(${neighborCandidates.length || 0}) 尾數(${tailAnalysis.length || 0})`);
-
   const isConsecutiveSafe = (currentList, newNum) => {
     const nums = [...currentList.map(x => x.val), newNum].sort((a, b) => a - b);
     let maxCons = 1, currentCons = 1;
