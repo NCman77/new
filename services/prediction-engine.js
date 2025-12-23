@@ -43,6 +43,10 @@ export const PredictionEngine = {
         container.innerHTML = '';
         document.getElementById('result-area').classList.remove('hidden');
 
+        const isRandom = (mode === 'random');
+        const isPack = (mode.startsWith('pack'));
+        const school = state.currentSchool;
+
         // --- 互動式包牌判斷 ---
         // 需求：威力彩/數位型在包牌模式下，先跑 5 組嚴選供使用者挑選
         const isInteractivePack = isPack && (gameDef.type === 'power' || gameDef.type === 'digit');
