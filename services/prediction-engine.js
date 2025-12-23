@@ -43,13 +43,12 @@ export const PredictionEngine = {
         container.innerHTML = '';
         document.getElementById('result-area').classList.remove('hidden');
 
-        const isRandom = (mode === 'random');
-        const isPack = (mode.startsWith('pack'));
-        const school = state.currentSchool;
+        // --- 互動式包牌判斷 ---
+        // 需求：威力彩/數位型在包牌模式下，先跑 5 組嚴選供使用者挑選
+        const isInteractivePack = isPack && (gameDef.type === 'power' || gameDef.type === 'digit');
 
-        // --- 學派邏輯執行 ---
-        // 為了支援「獨立包牌」，我們不再統一收集號碼，而是讓學派直接回傳多注結果
-        const count = isPack ? 1 : 5; // 如果是包牌模式，由學派內部決定注數
+        // 如果是互動式包牌，第一階段跑 5 注嚴選
+        const count = (isPack && !isInteractivePack) ? 1 : 5;
         const excludeSet = new Set();
         const allowDuplicates = (gameDef.type === 'digit');
 
@@ -60,10 +59,10 @@ export const PredictionEngine = {
                 subModeId: state.currentSubMode,
                 excludeNumbers: allowDuplicates ? new Set() : excludeSet,
                 random: isRandom,
-                mode: isRandom ? 'random' : 'strict',
+                mode: (isRandom || isInteractivePack) ? (isRandom ? 'random' : 'strict') : mode,
                 setIndex: i,
-                packMode: isPack ? mode : null,
-                targetCount: 5 // 預設產出 5 注
+                packMode: (isPack && !isInteractivePack) ? mode : null,
+                targetCount: 5
             };
 
             let result = null;
@@ -108,7 +107,14 @@ export const PredictionEngine = {
                     });
 
                     let rankLabel = `SET ${i + 1}`;
-                    if (isRandom) {
+                    if (isInteractivePack) {
+                        // 互動式包牌標籤：呈現嚴選品質，但註記可點擊
+                        const titles = ["👑 系統首選", "🥈 次佳組合", "🥉 潛力組合", "🛡️ 補位組合", "🛡️ 補位組合"];
+                        rankLabel = `<span class="text-purple-600 font-bold">💡 點擊展開包牌: ${titles[i] || `組合 ${i + 1}`}</span>`;
+                        // 注入候選標記
+                        result.metadata = result.metadata || {};
+                        result.metadata.isCandidate = true;
+                    } else if (isRandom) {
                         rankLabel = `<span class="text-amber-600">🎲 隨機推薦 ${i + 1}</span>`;
                     } else {
                         if (i === 0) rankLabel = `<span class="text-yellow-600">👑 系統首選</span>`;
@@ -185,5 +191,75 @@ export const PredictionEngine = {
             numbers: [...pickZone1, ...pickZone2],
             groupReason: `💡 流年格局:[${dominant}] 主導。`
         };
+    },
+
+    /**
+     * 擴展包牌結果 (第二階段)
+     */
+    expandPack(selectedNumbers, gameDef) {
+        const tickets = [];
+
+        if (gameDef.type === 'power') {
+            // 威力彩：第一區鎖定，第二區 01-08
+            const zone1 = selectedNumbers.slice(0, 6);
+            for (let z2 = 1; z2 <= 8; z2++) {
+                tickets.push({
+                    numbers: [
+                        ...zone1.map(n => ({ ...n, tag: '連動' })),
+                        { val: z2, tag: '全包' }
+                    ],
+                    groupReason: `二區全包策略 (第 ${z2} 注)`
+                });
+            }
+        } else if (gameDef.type === 'digit') {
+            // 數位型：全排列 (例如 123 -> 123, 132, 213, 231, 312, 321)
+            const rawNums = selectedNumbers.map(n => n.val);
+
+            // 取得全排列
+            const permutations = (arr) => {
+                if (arr.length <= 1) return [arr];
+                let results = [];
+                for (let i = 0; i < arr.length; i++) {
+                    const first = arr[i];
+                    const rest = [...arr.slice(0, i), ...arr.slice(i + 1)];
+                    const innerPerms = permutations(rest);
+                    for (let p of innerPerms) {
+                        results.push([first, ...p]);
+                    }
+                }
+                return results;
+            };
+
+            const allCombos = permutations(rawNums);
+            // 去重 (處理如 112 的情況)
+            const uniqueSigs = new Set();
+            const uniqueCombos = [];
+            allCombos.forEach(c => {
+                const sig = c.join(',');
+                if (!uniqueSigs.has(sig)) {
+                    uniqueSigs.add(sig);
+                    uniqueCombos.push(c);
+                }
+            });
+
+            uniqueCombos.forEach((combo, idx) => {
+                const gameName = Object.keys(GAME_CONFIG.GAMES).find(k => GAME_CONFIG.GAMES[k] === gameDef);
+                const posNameMap = {
+                    '3星彩': ['佰位', '拾位', '個位'],
+                    '4星彩': ['仟位', '佰位', '拾位', '個位']
+                };
+                const labels = posNameMap[gameName] || [];
+
+                tickets.push({
+                    numbers: combo.map((val, pos) => ({
+                        val,
+                        tag: labels[pos] || `位${pos + 1}`
+                    })),
+                    groupReason: `強勢排列策略 (${idx + 1}/${uniqueCombos.length})`
+                });
+            });
+        }
+
+        return tickets;
     }
 };
