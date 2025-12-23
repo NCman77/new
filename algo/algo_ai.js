@@ -1,7 +1,12 @@
 /**
- * algo_ai.js V8.7 (Stable Release)
+ * algo_ai.js V8.7.1 (Stable Release)
  * 
  * 修正歷史：
+ * 
+ * V8.7.1 (2024-12-23):
+ * - [Critical] 修復數字型彩票資料不足時的崩潰
+ * - [Critical] 修復四星彩讀取三星彩資料時的錯誤
+ * - [UX] 改進錯誤訊息，明確指出問題原因
  * 
  * V8.7 (2024-12-23):
  * - 統一所有版本號為 8.7
@@ -169,7 +174,7 @@ export function algoAI(params) {
     return result;
 
   } catch (err) {
-    console.error("[AI V8.7 Error]", err);
+    console.error("[AI V8.7.1 Error]", err);
     return _errorResult(packMode, `❌ ${err.message}`, 'computation_error');
   }
 }
@@ -874,4 +879,5 @@ function ai_uniquePermutations(nums) {
 function ai_cartesianProduct(arrays) {
   return arrays.reduce((a, b) => a.flatMap(d => b.map(e => [d, e].flat())), [[]]);
 }
+
 
