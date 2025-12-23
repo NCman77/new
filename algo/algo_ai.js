@@ -605,6 +605,7 @@ function ai_handleDigitSingle(ctx) {
   const combo = [];
 
   for (let pos = 0; pos < digitCount; pos++) {
+    // [V8.7.1] 這裡會拋出更清楚的錯誤訊息（如果資料不足）
     const rawScores = ai_buildDigitPosRawScores({ data, pos, params: AI_CONFIG.PARAMS.digit });
     const trendScores = ai_percentileRankTransform(rawScores, 10, 98);
 
@@ -612,7 +613,8 @@ function ai_handleDigitSingle(ctx) {
     if (random) {
       const cands = Object.keys(rawScores).map(Number).filter(n => !hardExcludeNum.has(n));
       if (cands.length === 0) {
-        throw new Error(`隨機候選數不足 (位置${pos} 全被排除)`);
+        // [V8.7.1] 改進錯誤訊息
+        throw new Error(`隨機模式失敗：位置 ${pos} 的所有號碼 (0-9) 都被排除。當前排除列表包含 ${hardExcludeNum.size} 個號碼。請減少排除數量。`);
       }
       const ctxW = ai_prepareWeightedContext(cands, rawScores);
       pick = ai_weightedSample(ctxW, 1, rng)[0];
@@ -620,14 +622,13 @@ function ai_handleDigitSingle(ctx) {
       const currentScores = { ...trendScores };
       const PENALTY = AI_CONFIG.PENALTIES.STRICT_NEXT_SET;
 
-      // [V8.6] Fixed Strict to respect hardExcludeNum
       const validCands = Object.keys(currentScores).map(Number).filter(n => !hardExcludeNum.has(n));
       if (validCands.length === 0) {
-        throw new Error(`嚴選候選數不足 (位置${pos} 全被排除)`);
+        // [V8.7.1] 改進錯誤訊息
+        throw new Error(`嚴選模式失敗：位置 ${pos} 的所有號碼 (0-9) 都被排除。當前排除列表包含 ${hardExcludeNum.size} 個號碼。請減少排除數量。`);
       }
 
       for (let i = 0; i < setIndex; i++) {
-        // [V8.6] Avoid in-place mutation
         const t = [...validCands].sort((a, b) => currentScores[b] - currentScores[a])[0];
         currentScores[t] *= PENALTY;
       }
@@ -726,7 +727,14 @@ function ai_buildRawScores({ data, range, count, isZone2, params }) {
 
 function ai_buildDigitPosRawScores({ data, pos, params }) {
   const { h_short, h_long, epsilon, kPrior } = params;
-  const numbersPerDraw = data.map(d => (d.numbers && d.numbers.length > pos) ? [d.numbers[pos]] : []).filter(a => a.length > 0);
+  const numbersPerDraw = data.map(d => 
+    (d.numbers && d.numbers.length > pos) ? [d.numbers[pos]] : []
+  ).filter(a => a.length > 0);
+
+  // [V8.7.1] 資料不足檢查
+  if (numbersPerDraw.length === 0) {
+    throw new Error(`數字型資料不足：位置 ${pos} 無任何歷史資料。請確認：1) 資料庫有足夠記錄, 2) subModeId (${pos + 1}星彩) 與資料匹配`);
+  }
 
   const wS = ai_computeHalfLifeWeights(numbersPerDraw.length, h_short);
   const wL = ai_computeHalfLifeWeights(numbersPerDraw.length, h_long);
@@ -866,3 +874,4 @@ function ai_uniquePermutations(nums) {
 function ai_cartesianProduct(arrays) {
   return arrays.reduce((a, b) => a.flatMap(d => b.map(e => [d, e].flat())), [[]]);
 }
+
