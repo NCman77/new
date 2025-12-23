@@ -320,9 +320,6 @@ function ai_packCombo(ctx) {
   const rawScores = ai_buildRawScores({ data, range: gameDef.range, count: gameDef.count, isZone2: false, params: AI_CONFIG.PARAMS.lotto });
   const trendScores = ai_percentileRankTransform(rawScores, 10, 98);
 
-  const scoresArr = Object.values(trendScores);
-  console.log(`[AI] 趨勢分佈: Max=${Math.max(...scoresArr).toFixed(2)} Min=${Math.min(...scoresArr).toFixed(2)} | 候選池大小: ${scoresArr.length}`);
-
   if (packMode === 'pack_1') {
     const currentScores = { ...trendScores };
     const PENALTY = AI_CONFIG.PENALTIES.PACK_DECAY;
@@ -386,6 +383,9 @@ function ai_generateStrictCombo(ctx, initialScores, targetSetIndex) {
   const poolSize = gameDef.count + buffer;
 
   const validNums = Object.keys(initialScores).map(Number).filter(n => !hardExcludeNum.has(n));
+
+  const scoresArr = Object.values(initialScores);
+  console.log(`[AI] 趨勢分佈: Max=${Math.max(...scoresArr).toFixed(2)} Min=${Math.min(...scoresArr).toFixed(2)} | 候選池: ${validNums.length}`);
 
   // Safety Check: Overall validity
   if (validNums.length < gameDef.count) {
