@@ -108,7 +108,7 @@ export function algoPattern({
   packMode = null,
   targetCount = 5
 }) {
-  log(`啟動 | 玩法: ${gameDef.type} | 模式: ${mode} | 包牌: ${packMode || '單注'} | 目標: ${targetCount}注`);
+  console.log(`[Pattern] 關聯學派 | ${gameDef.type} | ${data.length}期`);
 
   // 1. 資料驗證
   const validation = pattern_validateByGameDef(data, gameDef);
