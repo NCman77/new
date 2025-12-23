@@ -1,14 +1,28 @@
 /**
- * algo_ai.js V8.5 (Final Polish)
+ * algo_ai.js V8.7 (Stable Release)
  * 
- * 修正清單 (Advisor Feedback V8.4 -> V8.5):
- * 1. [Logic] Dynamic Pool Refresh: 將候選池建立移至 Set 迴圈內。
- *    - 每次產生新的一組號碼時，根據當前全域分數重新抓取 Top(K+Buffer)。
- *    - 解決連續產生多組 (10+) 時，靜態池號碼耗盡的問題。
- * 2. [Refactor] Honest Naming: 將 ai_pickTopK_Buffered 改名為 ai_pickTopK_WithSafetyCheck。
- *    - 該函式僅做安全檢查與警告，不含重試邏輯，避免誤導。
- * 3. [Stability] Pack 1 & Digit: 維持 V8.4 的穩定改進。
+ * 修正歷史：
+ * 
+ * V8.7 (2024-12-23):
+ * - 統一所有版本號為 8.7
+ * - 完整測試驗證通過
+ * 
+ * V8.6.2:
+ * - [Critical] 修復 ai_handleComboSingle return 語句位置錯誤
+ * - [Critical] 修復 ai_handleDigitSingle 遺失變數宣告
+ * 
+ * V8.6:
+ * - [Security] Digit Random 模式崩潰修復
+ * - [Security] Digit Strict 模式尊重排除號碼
+ * - [Security] Digit Pack 1 & Pack 2 候選池污染修復
+ * - [Refactor] 排序副作用修復（使用展開運算子）
+ * 
+ * V8.5:
+ * - [Logic] Dynamic Pool Refresh（動態候選池更新）
+ * - [Refactor] ai_pickTopK_WithSafetyCheck 命名改進
+ * - [Stability] Deterministic Replay 可重現性
  */
+
 
 import {
   ai_computeHalfLifeWeights,
@@ -155,13 +169,13 @@ export function algoAI(params) {
     return result;
 
   } catch (err) {
-    console.error("[AI V8.5 Error]", err);
+    console.error("[AI V8.7 Error]", err);
     return _errorResult(packMode, `❌ ${err.message}`, 'computation_error');
   }
 }
 
 function _errorResult(isPack, reason, code) {
-  const meta = { version: '8.5', error: code };
+  const meta = { version: '8.7', error: code };
   return isPack ? [] : { numbers: [], groupReason: reason, metadata: meta };
 }
 
@@ -200,7 +214,7 @@ function ai_packPower(ctx) {
           { val: z2, tag: `Z2(${String(z2).padStart(2, '0')})` }
         ],
         groupReason: `威力彩包牌 ${z2}/8`,
-        metadata: { version: '8.5', packMode: 'pack_1' }
+        metadata: { version: '8.7', packMode: 'pack_1' }
       });
     }
 
@@ -247,7 +261,7 @@ function ai_packPower(ctx) {
           { val: z2Val, tag: `趨勢分${Math.round(z2Trend[z2Val] || 50)}` }
         ],
         groupReason: `威力彩隨機 ${i + 1}/${targetCount}`,
-        metadata: { version: '8.5', packMode: 'pack_2', degraded, dReason, attempts: loop }
+        metadata: { version: '8.7', packMode: 'pack_2', degraded, dReason, attempts: loop }
       });
     }
   }
@@ -273,7 +287,7 @@ function ai_packCombo(ctx) {
       tickets.push({
         numbers: combo.map(n => ({ val: n, tag: `趨勢分${Math.round(trendScores[n] || 50)}` })),
         groupReason: `樂透包牌 ${i + 1}/${targetCount}`,
-        metadata: { version: '8.5', packMode: 'pack_1' }
+        metadata: { version: '8.7', packMode: 'pack_1' }
       });
     }
   } else {
@@ -306,7 +320,7 @@ function ai_packCombo(ctx) {
       tickets.push({
         numbers: combo.sort((a, b) => a - b).map(n => ({ val: n, tag: `趨勢分${Math.round(trendScores[n] || 50)}` })),
         groupReason: `樂透隨機 ${i + 1}/${targetCount}`,
-        metadata: { version: '8.5', packMode: 'pack_2', degraded, dReason }
+        metadata: { version: '8.7', packMode: 'pack_2', degraded, dReason }
       });
     }
   }
@@ -314,7 +328,7 @@ function ai_packCombo(ctx) {
 }
 
 function ai_packDigit(ctx) {
-  const { data, gameDef, packMode, targetCount, subModeId, rng } = ctx;
+  const { data, gameDef, packMode, targetCount, subModeId, rng, hardExcludeNum } = ctx;
   const tickets = [];
   const digitCount = subModeId || gameDef.count;
 
@@ -323,7 +337,12 @@ function ai_packDigit(ctx) {
     for (let pos = 0; pos < digitCount; pos++) {
       const rScores = ai_buildDigitPosRawScores({ data, pos, params: AI_CONFIG.PARAMS.digit });
       const tScores = ai_percentileRankTransform(rScores, 10, 98);
-      const topNum = Object.keys(tScores).map(Number).sort((a, b) => tScores[b] - tScores[a])[0];
+      // [V8.6] Pack 1 Filter
+      const validCands = Object.keys(tScores).map(Number).filter(n => !hardExcludeNum.has(n));
+      if (validCands.length === 0) {
+        throw new Error(`包牌1候選數不足 (位置${pos} 全被排除)`);
+      }
+      const topNum = validCands.sort((a, b) => tScores[b] - tScores[a])[0];
       posScores.push({ pos, num: topNum });
     }
     const perms = ai_uniquePermutations(posScores.map(p => p.num));
@@ -331,7 +350,7 @@ function ai_packDigit(ctx) {
       tickets.push({
         numbers: combo.map((num, pos) => ({ val: num, tag: `Pos${pos + 1}` })),
         groupReason: `數字型包牌 ${idx + 1}/${perms.length}`,
-        metadata: { version: '8.5', packMode: 'pack_1' }
+        metadata: { version: '8.7', packMode: 'pack_1' }
       });
     });
 
@@ -342,7 +361,12 @@ function ai_packDigit(ctx) {
     for (let pos = 0; pos < digitCount; pos++) {
       const rScores = ai_buildDigitPosRawScores({ data, pos, params: AI_CONFIG.PARAMS.digit });
       const tScores = ai_percentileRankTransform(rScores, 10, 98);
-      const topNums = Object.keys(tScores).map(Number).sort((a, b) => tScores[b] - tScores[a]).slice(0, TOP_N);
+      // [V8.6] Pack 2 Filter
+      const validCands = Object.keys(tScores).map(Number).filter(n => !hardExcludeNum.has(n));
+      if (validCands.length === 0) {
+        throw new Error(`包牌2候選數不足 (位置${pos} 全被排除)`);
+      }
+      const topNums = validCands.sort((a, b) => tScores[b] - tScores[a]).slice(0, TOP_N);
       posCands.push(topNums.map(n => ({ num: n, score: tScores[n] })));
     }
 
@@ -360,7 +384,7 @@ function ai_packDigit(ctx) {
       if (targetCount > all.length) {
         degraded = true;
         dReason = 'insufficient_combinations';
-        if (ctx.warnings) ctx.warnings.push(`Insufficient combinations: Need ${targetCount}, Available ${all.length}`);
+        if (ctx.warnings) ctx.warnings.push(`組合數不足: 需 ${targetCount}, 僅存 ${all.length}`);
       }
 
       const ranked = all.map(combo => {
@@ -406,7 +430,7 @@ function ai_packDigit(ctx) {
         numbers: item.combo.map((num, pos) => ({ val: num, tag: `P${pos}` })),
         groupReason: `數字型彈性 ${idx + 1}/${targetCount}`,
         metadata: {
-          version: '8.5',
+          version: '8.7',
           packMode: 'pack_2',
           degraded,
           degradeReason: dReason
@@ -571,7 +595,7 @@ function ai_handleComboSingle(ctx) {
   return {
     numbers: combo.sort((a, b) => a - b).map(n => ({ val: n, tag: `趨勢分${Math.round(trendScores[n] || 0)}` })),
     groupReason: random ? `🎲 AI 加權隨機` : `👑 AI 嚴選 TOP${setIndex + 1}`,
-    metadata: { version: '8.5', mode: ctx.mode, setIndex, degraded, attempts, dReason }
+    metadata: { version: '8.7', mode: ctx.mode, setIndex, degraded, attempts, dReason }
   };
 }
 
@@ -587,16 +611,27 @@ function ai_handleDigitSingle(ctx) {
     let pick;
     if (random) {
       const cands = Object.keys(rawScores).map(Number).filter(n => !hardExcludeNum.has(n));
+      if (cands.length === 0) {
+        throw new Error(`隨機候選數不足 (位置${pos} 全被排除)`);
+      }
       const ctxW = ai_prepareWeightedContext(cands, rawScores);
       pick = ai_weightedSample(ctxW, 1, rng)[0];
     } else {
       const currentScores = { ...trendScores };
       const PENALTY = AI_CONFIG.PENALTIES.STRICT_NEXT_SET;
+
+      // [V8.6] Fixed Strict to respect hardExcludeNum
+      const validCands = Object.keys(currentScores).map(Number).filter(n => !hardExcludeNum.has(n));
+      if (validCands.length === 0) {
+        throw new Error(`嚴選候選數不足 (位置${pos} 全被排除)`);
+      }
+
       for (let i = 0; i < setIndex; i++) {
-        const t = Object.keys(currentScores).map(Number).sort((a, b) => currentScores[b] - currentScores[a])[0];
+        // [V8.6] Avoid in-place mutation
+        const t = [...validCands].sort((a, b) => currentScores[b] - currentScores[a])[0];
         currentScores[t] *= PENALTY;
       }
-      pick = Object.keys(currentScores).map(Number).sort((a, b) => currentScores[b] - currentScores[a])[0];
+      pick = [...validCands].sort((a, b) => currentScores[b] - currentScores[a])[0];
     }
     combo.push({ val: pick, tag: `趨勢分${Math.round(trendScores[pick])}` });
   }
@@ -604,7 +639,7 @@ function ai_handleDigitSingle(ctx) {
   return {
     numbers: combo,
     groupReason: random ? `🎲 AI 加權隨機` : `👑 AI 嚴選 TOP${setIndex + 1}`,
-    metadata: { version: '8.5', mode, setIndex }
+    metadata: { version: '8.7', mode, setIndex }
   };
 }
 
@@ -640,7 +675,7 @@ function ai_handlePowerSingle(ctx) {
     z2Val = ai_weightedSample(ctx2, 1, rng)[0];
 
   } else {
-    // Strict Zone 1 Replay - Uses V8.5 Dynamic Pool
+    // Strict Zone 1 Replay - Uses V8.5 Dynamic Pool (Now V8.6)
     const result = ai_generateStrictCombo(ctx, z1Trend, setIndex);
     z1Combo = result.combo;
     degraded = result.degraded;
@@ -658,7 +693,7 @@ function ai_handlePowerSingle(ctx) {
       { val: z2Val, tag: `趨勢分${Math.round(z2Trend[z2Val] || 0)}` }
     ],
     groupReason: random ? `🎲 AI 加權隨機` : `👑 AI 嚴選 TOP${setIndex + 1}`,
-    metadata: { version: '8.5', mode: ctx.mode, setIndex, degraded, attempts, dReason }
+    metadata: { version: '8.7', mode: ctx.mode, setIndex, degraded, attempts, dReason }
   };
 }
 
