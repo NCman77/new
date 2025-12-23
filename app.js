@@ -22,7 +22,6 @@ import { algoStat } from './algo/algo_stat.js';
 import { algoPattern } from './algo/algo_pattern.js';
 import { algoBalance } from './algo/algo_balance.js';
 import { algoAI } from './algo/algo_ai.js';
-import { algoAI } from './algo/algo_ai.js';
 
 // 五行學派子系統(紫微 / 姓名 / 星盤 / 五行生肖)
 import { applyZiweiLogic } from './algo/algo_Ziwei.js';
@@ -319,31 +318,15 @@ const App = {
         const gameDef = GAME_CONFIG.GAMES[gameName];
         let data = this.state.rawData[gameName] || [];
 
-        // [新增] 動態調整包牌按鈕文字與顯示狀態
+        // [新增] 動態調整包牌按鈕文字 (pack_1)
         const pack1Text = document.getElementById('btn-pack-1-text');
-        const pack2Text = document.getElementById('btn-pack-2-text');
-        const pack2Container = document.getElementById('btn-pack-2-container');
-        const pack2Input = document.querySelector('input[value="pack_2"]');
-
-        if (pack1Text && pack2Text && pack2Container) {
+        if (pack1Text) {
             if (gameDef.type === 'power') {
-                // 威力彩：二區包牌 / 彈性包牌
                 pack1Text.innerText = "🔒 二區包牌";
-                pack2Text.innerText = "🌀 彈性包牌";
-                pack2Container.classList.remove('hidden');
             } else if (gameDef.type === 'digit') {
-                // 3星/4星：強勢包牌 / 彈性包牌
                 pack1Text.innerText = "🔥 強勢包牌";
-                pack2Text.innerText = "🌀 彈性包牌";
-                pack2Container.classList.remove('hidden');
             } else {
-                // 大樂透/539：標準包牌 (隱藏彈性包牌)
-                pack1Text.innerText = "🔒 標準包牌";
-                pack2Container.classList.add('hidden');
-                // 防呆：如果當前選中已隱藏的按鈕，自動切回嚴選
-                if (pack2Input && pack2Input.checked) {
-                    document.querySelector('input[value="strict"]').checked = true;
-                }
+                pack1Text.innerText = "🔒 智能包牌";
             }
         }
 
@@ -609,7 +592,6 @@ const App = {
         PredictionEngine.runPrediction({
             state: this.state,
             renderRow: (obj, idx, label) => this.renderRow(obj, idx, label),
-            algoSmartWheel: (...args) => this.algoSmartWheel(...args),
             ProfileService
         });
     },
@@ -623,28 +605,7 @@ const App = {
         });
     },
 
-    // [Fix] App 內部的 SmartWheel 包裝器 (避免命名衝突)
-    algoSmartWheel(data, gameDef, pool, packMode) {
-        // 使用重新命名的 imported function: generateSmartWheel
-        const results = generateSmartWheel(data, gameDef, pool, packMode);
 
-        if (!results || results.length === 0) {
-            document.getElementById('prediction-output').innerHTML =
-                '<div class="p-4 text-center text-stone-400">此玩法暫不支援包牌策略</div>';
-            return;
-        }
-
-        results.forEach((res, idx) =>
-            this.renderRow(
-                {
-                    numbers: res.numbers.map(n => ({ val: n, tag: '包牌' })),
-                    groupReason: res.groupReason
-                },
-                idx + 1,
-                `<span class="text-purple-600 font-bold">🛍️ 包牌組合 ${idx + 1}</span>`
-            )
-        );
-    },
 
     renderRow(resultObj, index, label = null) {
         const container = document.getElementById('prediction-output');
