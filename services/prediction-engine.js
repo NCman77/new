@@ -140,6 +140,7 @@ export const PredictionEngine = {
      * @param {Object} context.ProfileService - Profile 服務
      */
     runWuxingAlgo({ params, gameDef, ProfileService }) {
+        console.log(`[Wuxing] 五行學派 | ${gameDef.type} | ${params.data.length}期`);
         const wuxingWeights = {};
         const wuxingTagMap = {};
         const min = (gameDef.type === 'digit' ? 0 : 1);
