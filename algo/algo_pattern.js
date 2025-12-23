@@ -511,7 +511,6 @@ function pattern_buildCandidatePoolCombo(data, gameDef, config, excludeNumbers =
   const pool = Array.from(candidates.values())
     .sort((a, b) => b.score - a.score);
 
-  console.log(`[Pattern] 候選分配: 拖牌(8) 鄰號(${lastDraw.length * 2}) 尾數及Z-Score(${tailAnalysis.length}) 熱號(${hotTop})`);
   log(`候選池建構完成: ${pool.length}個候選`);
   return pool;
 }
@@ -862,6 +861,8 @@ function pattern_handleComboSingle(data, gameDef, excludeNumbers, mode, setIndex
   const checkSet = new Set(excludeNumbers);
   const stats = { drag: 0, neighbor: 0, tail: 0, hot: 0 };
 
+  console.log(`[Pattern] 候選分配: 拖牌(${dragCandidates.length || 0}) 鄰號(${neighborCandidates.length || 0}) 尾數(${tailAnalysis.length || 0})`);
+
   const isConsecutiveSafe = (currentList, newNum) => {
     const nums = [...currentList.map(x => x.val), newNum].sort((a, b) => a - b);
     let maxCons = 1, currentCons = 1;
@@ -908,6 +909,8 @@ function pattern_handleComboSingle(data, gameDef, excludeNumbers, mode, setIndex
       stats.neighbor++;
     }
   }
+
+  console.log(`[Pattern] 候選分配: 拖牌(${dragCandidates?.length || 0}) 鄰號(${neighborCandidates?.length || 0}) 尾數(${tailAnalysis?.length || 0})`);
 
   // Phase C: 尾數
   let tailCandidates = pattern_getTailCandidatesStrict(tailClusters, tailAnalysis, range, checkSet);
