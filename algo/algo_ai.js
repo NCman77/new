@@ -115,7 +115,45 @@ export function algoAI(params) {
     selectedCombo = null, seed = null,
     externalHistory = []
   } = params;
-
+// [V8.7.2] 數字型彩票：自動過濾無效排除號碼
+  if (gameDef.type === 'digit') {
+    const originalCount = excludeNumbers.length;
+    
+    // 過濾：只保留 0-9 範圍內的號碼
+    excludeNumbers = excludeNumbers.filter(item => {
+      if (typeof item === 'number') {
+        return item >= 0 && item <= 9;
+      } else if (Array.isArray(item)) {
+        return item.length > 0 && item.every(n => typeof n === 'number' && n >= 0 && n <= 9);
+      }
+      return false;
+    });
+    
+    // 診斷日誌
+    if (originalCount > 0 && excludeNumbers.length !== originalCount) {
+      console.warn(`[V8.7.2] 數字型彩票：已過濾 ${originalCount - excludeNumbers.length} 個超出範圍的排除號碼`);
+      console.info('[V8.7.2] 這通常是因為切換遊戲類型時未清空排除列表');
+    }
+    
+    // 安全檢查：確保至少有足夠的號碼可選
+    const numExcludes = excludeNumbers.filter(n => typeof n === 'number').length;
+    const digitCount = subModeId || gameDef.count;
+    const availableCount = 10 - numExcludes;  // 0-9 總共 10 個號碼
+    
+    if (availableCount < digitCount) {
+      console.error(`[V8.7.2] 數字型彩票錯誤：排除過多`);
+      console.error(`- 需要選 ${digitCount} 個號碼`);
+      console.error(`- 排除了 ${numExcludes} 個`);
+      console.error(`- 只剩 ${availableCount} 個可選`);
+      throw new Error(`數字型彩票錯誤：需要選 ${digitCount} 個號碼，但排除後只剩 ${availableCount} 個可選。請減少排除數量。`);
+    }
+    
+    if (numExcludes >= 7) {
+      console.warn(`[V8.7.2] 警告：數字型彩票排除了 ${numExcludes}/10 個號碼，選號空間很小`);
+    }
+  }
+  
+  // ========== 插入結束 ==========
   const rng = new ScopedRNG(seed);
 
   let safeData = [...data];
@@ -879,5 +917,6 @@ function ai_uniquePermutations(nums) {
 function ai_cartesianProduct(arrays) {
   return arrays.reduce((a, b) => a.flatMap(d => b.map(e => [d, e].flat())), [[]]);
 }
+
 
 
