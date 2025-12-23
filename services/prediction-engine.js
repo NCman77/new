@@ -12,7 +12,6 @@ import { algoStat } from '../algo/algo_stat.js';
 import { algoPattern } from '../algo/algo_pattern.js';
 import { algoBalance } from '../algo/algo_balance.js';
 import { algoAI } from '../algo/algo_ai.js';
-import { algoSmartWheel as generateSmartWheel } from '../algo/algo_smartwheel.js';
 
 // 五行學派子系統
 import { applyZiweiLogic } from '../algo/algo_Ziwei.js';
@@ -26,11 +25,10 @@ export const PredictionEngine = {
      * @param {Object} context - 包含所有依賴的上下文物件
      * @param {Object} context.state - App 狀態
      * @param {Function} context.renderRow - 渲染單行結果的回調函式
-     * @param {Function} context.algoSmartWheel - SmartWheel 包牌處理
      * @param {Object} context.ProfileService - Profile 服務
      */
     runPrediction(context) {
-        const { state, renderRow, algoSmartWheel, ProfileService } = context;
+        const { state, renderRow, ProfileService } = context;
 
         const gameName = state.currentGame;
         const gameDef = GAME_CONFIG.GAMES[gameName];
@@ -49,36 +47,11 @@ export const PredictionEngine = {
         const isPack = (mode.startsWith('pack'));
         const school = state.currentSchool;
 
-        // [Fix] 針對關聯學派(Pattern) V6.1 的直通車邏輯
-        if (school === 'pattern' && isPack) {
-            const params = {
-                data,
-                gameDef,
-                subModeId: state.currentSubMode,
-                excludeNumbers: new Set(),
-                mode: 'strict',
-                packMode: mode,
-                targetCount: 5
-            };
-
-            const results = algoPattern(params);
-
-            if (Array.isArray(results)) {
-                results.forEach((res, idx) => {
-                    renderRow(res, idx + 1, `<span class="text-purple-600 font-bold">🎯 關聯包牌 ${idx + 1}</span>`);
-                });
-            } else {
-                renderRow(results, 1);
-            }
-            return;
-        }
-
-        // --- 其他學派邏輯 (Loop + SmartWheel) ---
-        const count = isPack ? 3 : 5;
-        // V8.7.3.1 Hotfix: 數字型彩票允許號碼重複
+        // --- 學派邏輯執行 ---
+        // 為了支援「獨立包牌」，我們不再統一收集號碼，而是讓學派直接回傳多注結果
+        const count = isPack ? 1 : 5; // 如果是包牌模式，由學派內部決定注數
         const excludeSet = new Set();
         const allowDuplicates = (gameDef.type === 'digit');
-        const packPool = [];
 
         for (let i = 0; i < count; i++) {
             const params = {
@@ -88,12 +61,14 @@ export const PredictionEngine = {
                 excludeNumbers: allowDuplicates ? new Set() : excludeSet,
                 random: isRandom,
                 mode: isRandom ? 'random' : 'strict',
-                setIndex: i
+                setIndex: i,
+                packMode: isPack ? mode : null,
+                targetCount: 5 // 預設產出 5 注
             };
 
             let result = null;
 
-            // 學派選擇 - 新增學派只需在此處加 case
+            // 學派選擇
             switch (school) {
                 case 'balance':
                     result = algoBalance(params);
@@ -112,18 +87,26 @@ export const PredictionEngine = {
                     break;
             }
 
-            if (result && result.numbers) {
-                if (!monteCarloSim(result.numbers, gameDef)) { /* fallback */ }
+            // 處理結果渲染
+            if (result) {
+                // 如果學派回傳的是陣列 (代表它已經獨立處理了包牌結果)
+                if (Array.isArray(result)) {
+                    result.forEach((res, idx) => {
+                        const label = isPack ? `<span class="text-purple-600 font-bold">🎯 包牌組合 ${idx + 1}</span>` : `SET ${idx + 1}`;
+                        renderRow(res, idx + 1, label);
+                    });
+                    break; // 包牌模式一次渲染完即結束
+                }
 
-                result.numbers.forEach(n => {
-                    // V8.7.3.1 Hotfix: 只有非數字型彩票才累積排除
-                    if (!allowDuplicates) {
-                        excludeSet.add(n.val);
-                    }
-                    if (isPack) packPool.push(n.val);
-                });
+                // 單注模式渲染
+                if (result.numbers) {
+                    if (!monteCarloSim(result.numbers, gameDef)) { /* fallback */ }
 
-                if (!isPack) {
+                    // 更新排除集合 (用於單注連選)
+                    result.numbers.forEach(n => {
+                        if (!allowDuplicates) excludeSet.add(n.val);
+                    });
+
                     let rankLabel = `SET ${i + 1}`;
                     if (isRandom) {
                         rankLabel = `<span class="text-amber-600">🎲 隨機推薦 ${i + 1}</span>`;
@@ -135,15 +118,7 @@ export const PredictionEngine = {
                     }
                     renderRow(result, i + 1, rankLabel);
                 }
-
-                if (isPack && packPool.length >= 12) break;
             }
-        }
-
-        // 包牌模式後續處理
-        if (isPack) {
-            const finalPool = [...new Set(packPool)].slice(0, 12).sort((a, b) => a - b);
-            algoSmartWheel(data, gameDef, finalPool, mode);
         }
     },
 
