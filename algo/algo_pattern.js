@@ -97,12 +97,12 @@ const log = (...args) => {
 // 主入口函數
 // ==========================================
 
-export function algoPattern({ 
-  data, 
-  gameDef, 
-  subModeId, 
-  strategy = 'default', 
-  excludeNumbers = new Set(), 
+export function algoPattern({
+  data,
+  gameDef,
+  subModeId,
+  strategy = 'default',
+  excludeNumbers = new Set(),
   mode = 'strict',
   setIndex = 0,
   packMode = null,
@@ -113,8 +113,8 @@ export function algoPattern({
   // 1. 資料驗證
   const validation = pattern_validateByGameDef(data, gameDef);
   if (!validation.isValid) {
-    return packMode ? [] : { 
-      numbers: [], 
+    return packMode ? [] : {
+      numbers: [],
       groupReason: `❌ 資料驗證失敗: ${validation.error}`,
       metadata: { version: '6.1', error: validation.error }
     };
@@ -143,8 +143,8 @@ export function algoPattern({
   } else if (gameDef.type === 'digit') {
     singleResult = pattern_handleDigitSingle(validData, gameDef, strategy, mode, setIndex);
   } else {
-    return { 
-      numbers: [], 
+    return {
+      numbers: [],
       groupReason: "❌ 不支援的玩法類型",
       metadata: { version: '6.1' }
     };
@@ -222,8 +222,8 @@ function pattern_validatePower(data, gameDef) {
       continue;
     }
 
-    cleaned.push({ 
-      ...d, 
+    cleaned.push({
+      ...d,
       zone1: zone1,
       zone2: zone2
     });
@@ -370,22 +370,22 @@ function pattern_finalizeValidation(cleaned, rejected, gameDef, originalSize) {
     : PATTERN_CONFIG.DATA_THRESHOLDS.combo;
 
   if (cleaned.length < thresholds.reject) {
-    return { 
-      isValid: false, 
-      error: `有效資料不足 (${cleaned.length}筆 < ${thresholds.reject}筆，原始${originalSize}筆，排除${rejected}筆)` 
+    return {
+      isValid: false,
+      error: `有效資料不足 (${cleaned.length}筆 < ${thresholds.reject}筆，原始${originalSize}筆，排除${rejected}筆)`
     };
   }
 
   let warning = null;
   if (rejected > originalSize * 0.1) {
-    warning = `⚠️ 資料品質警告：排除了${rejected}筆 (${(rejected/originalSize*100).toFixed(1)}%)`;
+    warning = `⚠️ 資料品質警告：排除了${rejected}筆 (${(rejected / originalSize * 100).toFixed(1)}%)`;
   } else if (cleaned.length < thresholds.warn) {
     warning = `⚠️ 樣本偏少 (${cleaned.length}筆)`;
   }
 
-  return { 
-    isValid: true, 
-    data: cleaned, 
+  return {
+    isValid: true,
+    data: cleaned,
     warning,
     stats: {
       original: originalSize,
@@ -421,7 +421,7 @@ function pattern_sortData(data) {
       const val = getTimeValue(item);
       item[SORT_KEY] = isNaN(val) || val === 0 ? null : val;
     }
-    
+
     // V6.1: 過濾掉無效時序的資料
     const validData = data.filter(item => item[SORT_KEY] !== null);
     if (validData.length < data.length * 0.9) {
@@ -475,7 +475,7 @@ function pattern_buildCandidatePoolCombo(data, gameDef, config, excludeNumbers =
   // V6.1: 修復3/4 - 尾數候選
   const tailAnalysis = pattern_analyzeTailStatsDynamic(data, range, PATTERN_CONFIG.TAIL_PERIODS);
   const tailClusters = pattern_findTailClusters(lastDraw);
-  
+
   tailClusters.forEach(({ tail }) => {
     for (let n = (tail === 0 ? 10 : tail); n <= range; n += 10) {
       if (!excludeNumbers.has(n)) {
@@ -634,32 +634,12 @@ function pattern_packPower(data, gameDef, packMode, targetCount, mode, excludeNu
         groupReason: `標準包牌 - 第二區 ${String(z2).padStart(2, '0')} (第二區全包策略)`
       });
     }
-    
+
     // V6.1: 修復12 - targetCount 在 pack_1 無效（固定回傳8注）
     // 說明：威力彩包牌 pack_1 邏輯是「第一區鎖定 + 第二區全包(1-8)」
     // 因此不論 targetCount 設為多少，都會回傳 8 注
     // 如果未來要支援 targetCount，需要改為「部分第二區」策略
-  } else {
-    // 彈性包牌
-    const actualCount = Math.min(targetCount, 12);
-    const step = Math.max(1, Math.floor(zone1Pool.length / actualCount));
-
-    for (let k = 0; k < actualCount; k++) {
-      const offset = k * step;
-      const rotated = [...zone1Pool.slice(offset), ...zone1Pool.slice(0, offset)];
-      const zone1Set = pattern_pickSetGreedy(rotated.map(c => c.num), 6);
-      const zone2Num = zone2Pool[k % zone2Pool.length].num;
-
-      tickets.push({
-        numbers: [
-          ...zone1Set.map(n => ({ val: n, tag: '分散' })),
-          { val: zone2Num, tag: `Z2(G${zone2Pool[k % zone2Pool.length].gap})` }
-        ],
-        groupReason: `彈性包牌 ${k + 1}/${actualCount} - 第一區分散策略`
-      });
-    }
   }
-
   log(`威力彩包牌完成: ${tickets.length}注`);
   return tickets;
 }
@@ -715,73 +695,7 @@ function pattern_packDigit(data, gameDef, packMode, targetCount, mode) {
     return tickets;
   }
 
-  // ===== pack_2：彈性包牌 = 笛卡兒積高分挑 5 注（確定性 + 高準度 + 分散） =====
-  // 候選池大小：Top7 在 4星彩最多 7^4=2401 組，性能很安全
-  const TOP_N = 7;
-
-  const pools = pattern_buildCandidatePoolDigit(data, gameDef, TOP_N);
-  const scoreMaps = pattern_buildDigitPosScoreMap(pools);
-
-  // 產生笛卡兒積所有組合（這裡依賴你檔案原本就有的 pattern_cartesianProduct）
-  const combos = pattern_cartesianProduct(pools.map(p => p.map(c => c.num)));
-
-  // 1) 建立「嚴選 Top5」簽章：避免 pack_2 撞到你現有嚴選 Top5（保持模式差異）
-  const strictPoolsTop5 = pattern_buildCandidatePoolDigit(data, gameDef, 5);
-  const banned = new Set();
-  for (let r = 0; r < 5; r++) {
-    const strictCombo = strictPoolsTop5.map(pool => (pool[r] || pool[0]).num);
-    banned.add(pattern_digitComboSignature(strictCombo));
-  }
-
-  // 2) 也避免撞到 pack_1 的全排列（讓 pack_1 / pack_2 更分明）
-  const poolsTop1 = pattern_buildCandidatePoolDigit(data, gameDef, 1);
-  const baseTop1 = poolsTop1.map(p => (p && p[0] ? p[0].num : 0));
-  pattern_uniquePermutations(baseTop1).forEach(p => banned.add(pattern_digitComboSignature(p)));
-
-  // 3) 高分排序（確定性，不用亂數）
-  const ranked = combos
-    .map(combo => ({
-      combo,
-      score: pattern_scoreDigitCombo(combo, scoreMaps)
-    }))
-    .sort((a, b) => b.score - a.score);
-
-  // 4) 依序挑出 want 注，加入「分散」約束（先嚴後鬆）
-  const picked = [];
-  const pickedSig = new Set();
-
-  const pickWithMinDiff = (minDiff) => {
-    for (const item of ranked) {
-      if (picked.length >= want) break;
-      const combo = item.combo;
-      const sig = pattern_digitComboSignature(combo);
-
-      if (banned.has(sig)) continue;
-      if (pickedSig.has(sig)) continue;
-
-      // 分散：與已選任一注至少差 minDiff 個位置
-      if (minDiff > 0) {
-        const ok = picked.every(p => pattern_posDiff(p, combo) >= minDiff);
-        if (!ok) continue;
-      }
-
-      picked.push(combo);
-      pickedSig.add(sig);
-    }
-  };
-
-  pickWithMinDiff(2);
-  if (picked.length < want) pickWithMinDiff(1);
-  if (picked.length < want) pickWithMinDiff(0);
-
-  picked.slice(0, want).forEach((combo, idx) => {
-    tickets.push({
-      numbers: combo.map((num, pos) => ({ val: num, tag: `Pos${pos + 1}` })),
-      groupReason: `彈性包牌 ${idx + 1}/${want} - 高分笛卡兒積(Top${TOP_N})`
-    });
-  });
-
-  log(`數字型彈性包牌完成: ${tickets.length}注 (確定性高分挑選)`);
+  log(`數字型強勢包牌完成: ${tickets.length}注 (全排列去重)`);
   return tickets;
 }
 
@@ -904,7 +818,7 @@ function pattern_packCombo(data, gameDef, packMode, targetCount, mode, excludeNu
       while (tries < 12 && set.length < gameDef.count) {
         const shuffled = pattern_fisherYates([...poolNums]);
         const candidate = [...new Set(shuffled)].slice(0, gameDef.count);
-        
+
         if (candidate.length === gameDef.count && pattern_isConsecutiveOk(candidate)) {
           set = candidate.sort((a, b) => a - b);
           break;
