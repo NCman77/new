@@ -306,52 +306,6 @@ function ai_packPower(ctx) {
       });
     }
 
-  } else {
-    // Pack 2 (Random)
-    const limit = AI_CONFIG.PARAMS.power_zone1.randomCandidateLimit;
-    const z1Cands = ai_getTopKCandidates(z1Raw, limit, hardExcludeNum, ctx);
-    const z1Ctx = ai_prepareWeightedContext(z1Cands, z1Raw);
-    const z2Cands = Object.keys(z2Raw).map(Number);
-    const z2Ctx = ai_prepareWeightedContext(z2Cands, z2Raw);
-
-    const seenSigs = new Set();
-
-    for (let i = 0; i < targetCount; i++) {
-      let loop = 0;
-      let z1Combo, z2Val, signature;
-      let degraded = false;
-      let dReason = null;
-      let excludeHits = 0, dedupHits = 0;
-
-      while (loop < AI_CONFIG.LIMITS.MAX_RETRY_ATTEMPTS) {
-        z1Combo = ai_weightedSample(z1Ctx, 6, rng);
-        z2Val = ai_weightedSample(z2Ctx, 1, rng)[0];
-        signature = [...z1Combo].sort((a, b) => a - b).join(',') + '|' + z2Val;
-
-        if (ai_isComboExcluded(z1Combo, ctx.hardExcludeCombo)) {
-          excludeHits++; loop++; continue;
-        }
-        if (seenSigs.has(signature)) {
-          dedupHits++; loop++; continue;
-        }
-        break;
-      }
-
-      if (loop >= AI_CONFIG.LIMITS.MAX_RETRY_ATTEMPTS) {
-        degraded = true;
-        dReason = (excludeHits > dedupHits) ? 'exclude_limit' : 'dedup_limit';
-      }
-      seenSigs.add(signature);
-
-      tickets.push({
-        numbers: [
-          ...z1Combo.sort((a, b) => a - b).map(n => ({ val: n, tag: `趨勢分${Math.round(z1Trend[n] || 50)}` })),
-          { val: z2Val, tag: `趨勢分${Math.round(z2Trend[z2Val] || 50)}` }
-        ],
-        groupReason: `威力彩隨機 ${i + 1}/${targetCount}`,
-        metadata: { version: '8.7.3.1', packMode: 'pack_2', degraded, dReason, attempts: loop }
-      });
-    }
   }
   return tickets;
 }
@@ -376,39 +330,6 @@ function ai_packCombo(ctx) {
         numbers: combo.map(n => ({ val: n, tag: `趨勢分${Math.round(trendScores[n] || 50)}` })),
         groupReason: `樂透包牌 ${i + 1}/${targetCount}`,
         metadata: { version: '8.7.3.1', packMode: 'pack_1' }
-      });
-    }
-  } else {
-    // Pack 2 (Random)
-    const limit = AI_CONFIG.PARAMS.lotto.randomCandidateLimit;
-    const candidates = ai_getTopKCandidates(rawScores, limit, hardExcludeNum, ctx);
-    const weightedCtx = ai_prepareWeightedContext(candidates, rawScores);
-
-    const seenSigs = new Set();
-
-    for (let i = 0; i < targetCount; i++) {
-      let loop = 0;
-      let combo, sig, degraded = false, dReason = null;
-      let excludeHits = 0, dedupHits = 0;
-
-      while (loop < AI_CONFIG.LIMITS.MAX_RETRY_ATTEMPTS) {
-        combo = ai_weightedSample(weightedCtx, gameDef.count, rng);
-        sig = [...combo].sort((a, b) => a - b).join(',');
-
-        if (ai_isComboExcluded(combo, ctx.hardExcludeCombo)) { excludeHits++; loop++; continue; }
-        if (seenSigs.has(sig)) { dedupHits++; loop++; continue; }
-        break;
-      }
-      if (loop >= AI_CONFIG.LIMITS.MAX_RETRY_ATTEMPTS) {
-        degraded = true;
-        dReason = (excludeHits > dedupHits) ? 'exclude_limit' : 'dedup_limit';
-      }
-      seenSigs.add(sig);
-
-      tickets.push({
-        numbers: combo.sort((a, b) => a - b).map(n => ({ val: n, tag: `趨勢分${Math.round(trendScores[n] || 50)}` })),
-        groupReason: `樂透隨機 ${i + 1}/${targetCount}`,
-        metadata: { version: '8.7.3.1', packMode: 'pack_2', degraded, dReason }
       });
     }
   }
@@ -442,89 +363,6 @@ function ai_packDigit(ctx) {
       });
     });
 
-  } else {
-    // Pack 2
-    const TOP_N = AI_CONFIG.LIMITS.DIGIT_PACK2_TOP_N;
-    const posCands = [];
-    for (let pos = 0; pos < digitCount; pos++) {
-      const rScores = ai_buildDigitPosRawScores({ data, pos, params: AI_CONFIG.PARAMS.digit });
-      const tScores = ai_percentileRankTransform(rScores, 10, 98);
-      // [V8.6] Pack 2 Filter
-      const validCands = Object.keys(tScores).map(Number).filter(n => !hardExcludeNum.has(n));
-      if (validCands.length === 0) {
-        throw new Error(`包牌2候選數不足 (位置${pos} 全被排除)`);
-      }
-      const topNums = validCands.sort((a, b) => tScores[b] - tScores[a]).slice(0, TOP_N);
-      posCands.push(topNums.map(n => ({ num: n, score: tScores[n] })));
-    }
-
-    const totalSize = posCands.reduce((acc, curr) => acc * curr.length, 1);
-
-    let safeMode = totalSize > AI_CONFIG.LIMITS.MAX_CARTESIAN_SIZE;
-
-    let picked = [];
-    let degraded = false;
-    let dReason = null;
-
-    if (!safeMode) {
-      const all = ai_cartesianProduct(posCands.map(pc => pc.map(c => c.num)));
-
-      if (targetCount > all.length) {
-        degraded = true;
-        dReason = 'insufficient_combinations';
-        if (ctx.warnings) ctx.warnings.push(`組合數不足: 需 ${targetCount}, 僅存 ${all.length}`);
-      }
-
-      const ranked = all.map(combo => {
-        let sc = 0;
-        combo.forEach((n, p) => {
-          const match = posCands[p].find(x => x.num === n);
-          sc += match ? match.score : 0;
-        });
-        return { combo, score: sc };
-      }).sort((a, b) => b.score - a.score);
-
-      const seenSigs = new Set();
-
-      for (const item of ranked) {
-        if (picked.length >= targetCount) break;
-        const sig = item.combo.join(',');
-        if (seenSigs.has(sig)) continue;
-        if (ai_isComboExcluded(item.combo, ctx.hardExcludeCombo)) continue;
-        seenSigs.add(sig);
-        picked.push(item);
-      }
-    } else {
-      // Safe Mode
-      degraded = true;
-      dReason = 'cartesian_safe_mode';
-      let loop = 0;
-      const seen = new Set();
-      const MAX_SAFE_LOOP = 200;
-
-      while (picked.length < targetCount && loop < MAX_SAFE_LOOP) {
-        const combo = posCands.map(pc => pc[Math.floor(rng.next() * pc.length)].num);
-        const sig = combo.join(',');
-        if (!seen.has(sig) && !ai_isComboExcluded(combo, ctx.hardExcludeCombo)) {
-          seen.add(sig);
-          picked.push({ combo, score: 0 });
-        }
-        loop++;
-      }
-    }
-
-    picked.forEach((item, idx) => {
-      tickets.push({
-        numbers: item.combo.map((num, pos) => ({ val: num, tag: `P${pos}` })),
-        groupReason: `數字型彈性 ${idx + 1}/${targetCount}`,
-        metadata: {
-          version: '8.7.3.1',
-          packMode: 'pack_2',
-          degraded,
-          degradeReason: dReason
-        }
-      });
-    });
   }
   return tickets;
 }
