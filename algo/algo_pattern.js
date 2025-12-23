@@ -511,6 +511,7 @@ function pattern_buildCandidatePoolCombo(data, gameDef, config, excludeNumbers =
   const pool = Array.from(candidates.values())
     .sort((a, b) => b.score - a.score);
 
+  console.log(`[Pattern] 候選分配: 拖牌(8) 鄰號(${lastDraw.length * 2}) 尾數及Z-Score(${tailAnalysis.length}) 熱號(${hotTop})`);
   log(`候選池建構完成: ${pool.length}個候選`);
   return pool;
 }
