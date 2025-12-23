@@ -1,7 +1,12 @@
 /**
- * algo_ai.js V8.7.3 (Production Ready)
+ * algo_ai.js V8.7.3.1 (Hotfix: Set Support)
  * 
  * 修正歷史：
+ * 
+ * V8.7.3.1 (2024-12-23):
+ * - [Critical Hotfix] 支援 excludeNumbers 為 Set 類型
+ * - [Robustness] 類型安全檢查（Set/Array/null/undefined）
+ * - [Fix] 修復三星彩/四星彩完全無法使用的問題
  * 
  * V8.7.3 (2024-12-23):
  * - [Code Quality] 移除冗餘的 typeof 檢查（safeExcludeNumbers）
@@ -125,16 +130,22 @@ export function algoAI(params) {
   } = params;
 
   // ============================================
-  // [V8.7.3] 數字型彩票：自動過濾無效排除號碼
+  // [V8.7.3.1] 數字型彩票：自動過濾無效排除號碼
   // 問題：跨遊戲類型污染 + 組合排除計數不準確
   // 解決：自動過濾超出 0-9 範圍的排除號碼，並正確計算排除總數
   // 優化：僅在數字型彩票時創建副本，避免不必要的記憶體分配
+  // 修復：支援 Set/Array/null/undefined 等類型
   // ============================================
   if (gameDef.type === 'digit') {
-    const originalCount = excludeNumbers.length;
+    // 0. 確保 excludeNumbers 是陣列（支援 Set/Array/其他可迭代類型）
+    const excludeArray = (excludeNumbers instanceof Set)
+      ? Array.from(excludeNumbers)
+      : (Array.isArray(excludeNumbers) ? excludeNumbers : []);
+
+    const originalCount = excludeArray.length;
 
     // 1. 過濾排除號碼：只保留 0-9 範圍內的（創建副本避免污染原參數）
-    const safeExcludeNumbers = excludeNumbers.filter(item => {
+    const safeExcludeNumbers = excludeArray.filter(item => {
       if (typeof item === 'number') {
         return item >= 0 && item <= 9;
       } else if (Array.isArray(item)) {
@@ -146,8 +157,8 @@ export function algoAI(params) {
     // 2. 輸出診斷日誌
     if (originalCount > 0 && safeExcludeNumbers.length !== originalCount) {
       const filtered = originalCount - safeExcludeNumbers.length;
-      console.warn(`[V8.7.3 自動修復] 數字型彩票：已過濾 ${filtered} 個超出範圍 (0-9) 的排除號碼`);
-      console.info('[V8.7.3 提示] 這通常是因為切換遊戲類型時未清空排除列表');
+      console.warn(`[V8.7.3.1 自動修復] 數字型彩票：已過濾 ${filtered} 個超出範圍 (0-9) 的排除號碼`);
+      console.info('[V8.7.3.1 提示] 這通常是因為切換遊戲類型時未清空排除列表');
     }
 
     // 3. 正確計算「被排除的唯一號碼」數量（含單號與組合）
@@ -166,12 +177,12 @@ export function algoAI(params) {
 
     // 4. 警告：排除過多（先警告，避免被 Error 中斷）
     if (numExcludes >= 7 && availableCount >= digitCount) {
-      console.warn(`[V8.7.3 警告] 數字型彩票排除了 ${numExcludes}/10 個號碼，選號空間極小`);
+      console.warn(`[V8.7.3.1 警告] 數字型彩票排除了 ${numExcludes}/10 個號碼，選號空間極小`);
     }
 
     // 5. 致命錯誤檢查
     if (availableCount < digitCount) {
-      console.error(`[V8.7.3 錯誤] 數字型彩票排除過多：`);
+      console.error(`[V8.7.3.1 錯誤] 數字型彩票排除過多：`);
       console.error(`  - 需要選 ${digitCount} 個不同號碼`);
       console.error(`  - 已排除 ${numExcludes} 個唯一號碼`);
       console.error(`  - 僅剩 ${availableCount} 個可選`);
@@ -184,7 +195,7 @@ export function algoAI(params) {
     excludeNumbers = safeExcludeNumbers;
   }
   // ============================================
-  // [V8.7.3] 防禦機制結束
+  // [V8.7.3.1] 防禦機制結束
   // ============================================
 
   const rng = new ScopedRNG(seed);
@@ -199,7 +210,7 @@ export function algoAI(params) {
   }
   if (safeData.length === 0) return _errorResult(packMode, '❌ 資料不足', 'insufficient_data');
 
-  // [V8.7.3] 直接使用 excludeNumbers（已在上方 digit 區塊處理）
+  // [V8.7.3.1] 直接使用 excludeNumbers（已在上方 digit 區塊處理）
   const { hardExcludeNum, hardExcludeCombo } = ai_parseExclude(excludeNumbers);
 
   const safeExternalHistory = [];
@@ -246,13 +257,13 @@ export function algoAI(params) {
     return result;
 
   } catch (err) {
-    console.error("[AI V8.7.3 Error]", err);
+    console.error("[AI V8.7.3.1 Error]", err);
     return _errorResult(packMode, `❌ ${err.message}`, 'computation_error');
   }
 }
 
 function _errorResult(isPack, reason, code) {
-  const meta = { version: '8.7.3', error: code };
+  const meta = { version: '8.7.3.1', error: code };
   return isPack ? [] : { numbers: [], groupReason: reason, metadata: meta };
 }
 
@@ -291,7 +302,7 @@ function ai_packPower(ctx) {
           { val: z2, tag: `Z2(${String(z2).padStart(2, '0')})` }
         ],
         groupReason: `威力彩包牌 ${z2}/8`,
-        metadata: { version: '8.7.3', packMode: 'pack_1' }
+        metadata: { version: '8.7.3.1', packMode: 'pack_1' }
       });
     }
 
@@ -338,7 +349,7 @@ function ai_packPower(ctx) {
           { val: z2Val, tag: `趨勢分${Math.round(z2Trend[z2Val] || 50)}` }
         ],
         groupReason: `威力彩隨機 ${i + 1}/${targetCount}`,
-        metadata: { version: '8.7.3', packMode: 'pack_2', degraded, dReason, attempts: loop }
+        metadata: { version: '8.7.3.1', packMode: 'pack_2', degraded, dReason, attempts: loop }
       });
     }
   }
@@ -364,7 +375,7 @@ function ai_packCombo(ctx) {
       tickets.push({
         numbers: combo.map(n => ({ val: n, tag: `趨勢分${Math.round(trendScores[n] || 50)}` })),
         groupReason: `樂透包牌 ${i + 1}/${targetCount}`,
-        metadata: { version: '8.7.3', packMode: 'pack_1' }
+        metadata: { version: '8.7.3.1', packMode: 'pack_1' }
       });
     }
   } else {
@@ -397,7 +408,7 @@ function ai_packCombo(ctx) {
       tickets.push({
         numbers: combo.sort((a, b) => a - b).map(n => ({ val: n, tag: `趨勢分${Math.round(trendScores[n] || 50)}` })),
         groupReason: `樂透隨機 ${i + 1}/${targetCount}`,
-        metadata: { version: '8.7.3', packMode: 'pack_2', degraded, dReason }
+        metadata: { version: '8.7.3.1', packMode: 'pack_2', degraded, dReason }
       });
     }
   }
@@ -427,7 +438,7 @@ function ai_packDigit(ctx) {
       tickets.push({
         numbers: combo.map((num, pos) => ({ val: num, tag: `Pos${pos + 1}` })),
         groupReason: `數字型包牌 ${idx + 1}/${perms.length}`,
-        metadata: { version: '8.7.3', packMode: 'pack_1' }
+        metadata: { version: '8.7.3.1', packMode: 'pack_1' }
       });
     });
 
@@ -507,7 +518,7 @@ function ai_packDigit(ctx) {
         numbers: item.combo.map((num, pos) => ({ val: num, tag: `P${pos}` })),
         groupReason: `數字型彈性 ${idx + 1}/${targetCount}`,
         metadata: {
-          version: '8.7.3',
+          version: '8.7.3.1',
           packMode: 'pack_2',
           degraded,
           degradeReason: dReason
@@ -672,7 +683,7 @@ function ai_handleComboSingle(ctx) {
   return {
     numbers: combo.sort((a, b) => a - b).map(n => ({ val: n, tag: `趨勢分${Math.round(trendScores[n] || 0)}` })),
     groupReason: random ? `🎲 AI 加權隨機` : `👑 AI 嚴選 TOP${setIndex + 1}`,
-    metadata: { version: '8.7.3', mode: ctx.mode, setIndex, degraded, attempts, dReason }
+    metadata: { version: '8.7.3.1', mode: ctx.mode, setIndex, degraded, attempts, dReason }
   };
 }
 
@@ -716,7 +727,7 @@ function ai_handleDigitSingle(ctx) {
   return {
     numbers: combo,
     groupReason: random ? `🎲 AI 加權隨機` : `👑 AI 嚴選 TOP${setIndex + 1}`,
-    metadata: { version: '8.7.3', mode, setIndex }
+    metadata: { version: '8.7.3.1', mode, setIndex }
   };
 }
 
@@ -770,7 +781,7 @@ function ai_handlePowerSingle(ctx) {
       { val: z2Val, tag: `趨勢分${Math.round(z2Trend[z2Val] || 0)}` }
     ],
     groupReason: random ? `🎲 AI 加權隨機` : `👑 AI 嚴選 TOP${setIndex + 1}`,
-    metadata: { version: '8.7.3', mode: ctx.mode, setIndex, degraded, attempts, dReason }
+    metadata: { version: '8.7.3.1', mode: ctx.mode, setIndex, degraded, attempts, dReason }
   };
 }
 
