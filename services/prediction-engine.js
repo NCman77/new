@@ -194,7 +194,11 @@ export const PredictionEngine = {
 
         return {
             numbers: [...pickZone1, ...pickZone2],
-            groupReason: `💡 流年格局:[${dominant}] 主導。`
+            groupReason: `💡 流年格局:[${dominant}] 主導。`,
+            metadata: {
+                profileName: profile ? profile.name : '預設',
+                dominantTag: dominant
+            }
         };
     },
 
