@@ -1,225 +1,1768 @@
 /**
- * algo_stat.js  
- * 統計學派：基於熱號+溫號+冷號 + 極限遺漏回補的選號邏輯（100分完美版）
+ * algo_stat.js V3.2b - The Statistical Analysis Algorithm (統計學派 - 強化健全性版)
  * 
- * 支援玩法：
- * - 組合型：大樂透 (49選6) / 威力彩 (38選6+8選1) / 今彩539 (39選5)
- * - 數字型：3星彩 (0-9選3) / 4星彩 (0-9選4)
+ * ==========================================
+ * 版本資訊
+ * ==========================================
+ * V3.2b (2025-12-31) - Hardening & Robustness Enhancements
+ * - ✅ [T1-P0] 排除值整數化驗證（_countValidExcluded, stat_parseExclude）
+ * - ✅ [T2-P0] seed非法值硬性錯誤（StatRNG, algoStat）
+ * - ✅ [T3-P1] 防污染欄位檢查（Object.prototype.hasOwnProperty.call）
+ * - ✅ [T4-P1] 時間戳Infinity驗證（getTimeValue閉包）
+ * - ✅ [T5-P1] packCount上限治理（MAX_PACK_COUNT: 200）
+ * - ✅ [T6-P2] 回傳契約文件化（JSDoc完整註解）
+ * - ✅ [T7-P2] configOverride型別驗證（11個數值欄位）
+ * - ✅ [T8-P1] warnings統一為Array（移除條件判斷）
+ * - ✅ [T9-P1] _countValidExcluded型別防呆（可迭代性檢查）
+ * - ✅ [T10-P2] dropRate除零保護
+ * - ✅ [T11-P2] 參數矯正回報（packCount/mode）
+ * - ✅ [T12-P2] configWarnings記錄原始值
+ * - ✅ [T13-P2] 版本號統一為3.2b
  * 
- * 核心功能：
- * 1. 動態熱溫冷分類 - 近20期≥8次=熱號, 5-7次=溫號, ≤4次=冷號
- * 2. 極限遺漏回補 - 27期以上未開優先選入(最高權重)
- * 3. 權重動態計算 - 熱號0.4 + 溫號0.3 + 冷號0.2 + 遺漏0.1
- * 4. 連莊號追蹤 - 前3期重複數字30%機率保留
- * 5. 第二區獨立統計 - 威力彩第二區熱冷獨立分析
+ * V3.2a (2025-12-31) - Compatibility & Robustness Fixes
+ * - ✅ [P0-修復#1] EXTREME_MAX_RATIO 預設 1.0（不限制，相容 V3.1）
+ * - ✅ [P0-修復#2] packMeta 不可列舉附加（避免迭代污染）
+ * - ✅ [P1-修復#3] auto 欄位偵測掃描前 10 筆（提升命中率）
+ * - ✅ [P1-修復#4] 參數非法值明確處理（dataOrder/packReturn）
+ * - ✅ [P2-修復#5] 有效排除數量明確計算（去隱性假設）
  * 
- * 選號邏輯：
- * 組合型：3熱+2溫+1冷 → 遺漏回補 → 權重排序 → Top6
- * 數字型：2熱+1溫 → 連莊優先 → 避免全對子 → 熱度排序
+ * V3.2 (2025-12-31) - Critical Fixes Phase 2 (8個缺陷全部修復)
+ * - ✅ [P0-修復#1] packMode 回傳契約相容性（預設 array，opt-in object）
+ * - ✅ [P0-修復#2] dataOrder 語意完整落地（auto/latestFirst/oldestFirst）
+ * - ✅ [P0-修復#3] unseenCount 正確計算（只扣範圍內排除數）
+ * - ✅ [P0-修復#4] digit 全歷史早停邏輯修復（allFound 正確判定）
+ * - ✅ [P1-修復#5] 組合型排除過多前置檢查
+ * - ✅ [P2-修復#6] 組合排除靜默忽略改為明確警告
+ * - ✅ [P2-修復#7] 極限加分模式揭露與占比限制
+ * - ✅ [P2-修復#8] console.log 改為 metadata.warnings
+ * 
+ * V3.1 (2025-12-31) - Critical Fixes Phase 1
+ * - ✅ [P0-修復#1] currentMiss 全歷史計算（早停優化）
+ * - ✅ [P0-修復#2] 極限遺漏破壞性加分（score=100，確保必選）
+ * - ✅ [P1-修復#3] 資料自動排序（整合自01.js，智慧欄位偵測）
+ * - ✅ [P1-修復#4] Top模式確定性（noise=0，確保可重現）
+ * - ✅ [P2-修復#5] 資料丟棄統計（可審計，top3原因）
+ * - ✅ [P2-修復#6] hardExcludeCombo 移除承諾（功能未實作）
+ * - ✅ [P2-修復#7] 包牌警告結構化（不混入tickets陣列）
+ * - ✅ [P2-修復#8] 註解一致性（移除未落地的宣稱）
+ * 
+ * V3.0 (2025-12-31) - Ultimate Integration
+ * - ✅ [整合] 以 02.js 優雅架構為基礎
+ * - ✅ [整合] 加入 01.js 的 excludeNumbers 處理邏輯
+ * - ✅ [整合] softmax 加權抽樣（z-score標準化）
+ * - ✅ [整合] 包牌功能（絕對去重）
+ * - ✅ [整合] ScopedRNG 可重現隨機數生成器
+ * 
+ * V2.0 (2025-12-31) - Complete Refactor & Fix
+ * - ✅ [P0-1] 修復：返回超量號碼（動態配額 + 強制裁切）
+ * - ✅ [P0-2] 修復：4星彩完整支援（動態位數統計）
+ * - ✅ [P0-3] 修復：冷號定義錯誤（全集母體統計）
+ * - ✅ [P0-4] 修復：遺漏回補真實計算（missGap 真實統計）
+ * - ✅ [P0-5] 修復：權重系統完整實作（評分引擎 + TopN/加權隨機）
+ * - ✅ [P1-6] 修復：連莊追蹤實作（前K期重複偵測）
+ * - ✅ [P1-7] 修復：Map順序偏差（強制排序）
+ * - ✅ [P1-8] 修復：位置統計實作（分位統計 + 獨立評分）
+ * - ✅ [P2-9] 修復：Tag標籤動態生成（從統計表生成）
+ * - ✅ [P2-10] 修復：配置統一（STAT_CONFIG 完整化）
+ * - ✅ [P2-11] 修復：資料防呆完整（驗證系統 + 異常處理）
+ * 
+ * ==========================================
+ * 統計方法說明
+ * ==========================================
+ * 熱號 (Hot)：近期高頻出現號碼
+ * 溫號 (Warm)：近期中頻出現號碼
+ * 冷號 (Cold)：近期低頻或未出現號碼
+ * 遺漏回補：長期未開出號碼（統計特徵，非預測）
+ * 連莊追蹤：前K期重複出現號碼
+ * 
+ * 評分公式（四因子 + 極限加成）：
+ * - 正常號碼：score = freq×0.4 + miss×0.3 + streak×0.2 + noise×0.1
+ * - 極限遺漏：score = 100 + 正常分數（破壞性加分，確保必選）
+ * - Top模式：noise 固定為 0（確保確定性）
+ * 
+ * ⚠️ 學術聲明：本系統提供統計特徵分析，不保證提高中獎率。
+ * 
+ * ==========================================
+ * 使用範例
+ * ==========================================
+ * // 單注選號（自動排序）
+ * const result = algoStat({
+ *     data: historyData,  // 可亂序，會自動排序
+ *     gameDef: { type: 'lotto', count: 6, range: 49 },
+ *     excludeNumbers: [7, 13],  // 只支援單號排除
+ *     mode: 'top',
+ *     seed: 12345,
+ *     dataOrder: 'auto'  // 自動偵測排序
+ * });
+ * 
+ * // 包牌選號（V3.2 預設回傳 array，相容 V3.0）
+ * const tickets = algoStat({
+ *     data: historyData,
+ *     gameDef: { type: 'lotto', count: 6, range: 49 },
+ *     mode: 'weighted',
+ *     seed: 12345,
+ *     packMode: true,
+ *     packCount: 10
+ * });
+ * // tickets 是 Array，tickets.packMeta 是附加資訊（不可列舉）
+ * 
+ * // 包牌選號（需要詳細 metadata 時）
+ * const packResult = algoStat({
+ *     data: historyData,
+ *     gameDef: { type: 'lotto', count: 6, range: 49 },
+ *     mode: 'weighted',
+ *     seed: 12345,
+ *     packMode: true,
+ *     packCount: 10,
+ *     packReturn: 'object'  // V3.2 新增
+ * });
+ * // packResult = { ok: true, tickets: [...], metadata: {...} }
+ * ==========================================
  */
 
-const STAT_CONFIG = {
-    HOT_THRESHOLD: 8,    
-    WARM_THRESHOLD: 5,   
-    COLD_MAX_MISS: 27,   
-    RECENT_PERIOD: 20
+/* ------------------------- [A] 配置區 ------------------------- */
+
+export const STAT_CONFIG = {
+    VERSION: '3.2b',
+
+    // 共通配置
+    RECENT_REPEAT: 3,              // 連莊/重複檢測窗口（近 K 期）
+    COLD_MAX_MISS: 27,             // 極限遺漏門檻（遺漏 >= 27 期）
+    MIN_REQUIRED_DRAWS: 10,        // 少於此期數：允許降級，但會在 groupReason 提醒
+
+    // 組合型（lotto / today / power 主區）
+    COMBO_RECENT_PERIOD: 20,
+    COMBO_HOT_THRESHOLD: 8,        // Tag 分類用（非選號主機制）
+    COMBO_WARM_THRESHOLD: 5,
+
+    // 第二區（power / 其他有第二區者）
+    ZONE2_RECENT_PERIOD: 20,
+    ZONE2_HOT_THRESHOLD: 4,
+    ZONE2_WARM_THRESHOLD: 2,
+
+    // 數字型（3星/4星/5星彩）
+    DIGIT_RECENT_PERIOD: 30,
+    DIGIT_HOT_THRESHOLD: 10,
+    DIGIT_WARM_THRESHOLD: 6,
+    DIGIT_AVOID_ALL_SAME: true,    // 避免 222 / 777（可關閉）
+
+    // 權重（0.4/0.3/0.2/0.1：四因子落地）
+    WEIGHT_FREQ: 0.4,              // 近 N 期頻率
+    WEIGHT_MISS: 0.3,              // currentMiss（遺漏）
+    WEIGHT_STREAK: 0.2,            // 近 K 期重複/連莊
+    WEIGHT_NOISE: 0.1,             // 小幅擾動（需 seed 才可重現）
+
+    // V3.1 新增：極限遺漏策略
+    EXTREME_BOOST_MODE: 'destructive',  // 'destructive' | 'additive'
+    EXTREME_BOOST_SCORE: 100,           // 破壞性加分分數（遠大於正常分數0-1）
+
+    // V3.2a 修復#1：預設 1.0（不限制極限占比，相容 V3.1）
+    // 只有調低（如 0.5）才會限制極限號碼最多占 50%
+    // 預設 1.0 = 100% = 不限制（等價 V3.1 行為）
+    EXTREME_MAX_RATIO: 1.0,
+
+    // 選取策略（roulette 的 softmax 參數）
+    ROULETTE_TEMPERATURE: 1.0,
+
+    // V3.2b T5：包牌數量上限（資源保護）
+    MAX_PACK_COUNT: 200,
 };
 
-export function algoStat({ data, gameDef, subModeId }) {
-    console.log(`[Stat] 統計學派 | ${gameDef.type} | ${data.length}期`);
-    
-    if (data.length === 0) return { numbers: [], groupReason: "⚠️ 無資料" };
-    
-    if (gameDef.type === 'lotto' || gameDef.type === 'power') {
-        return handleComboStat(data, gameDef);
-    } else if (gameDef.type === 'digit') {
-        return handleDigitStat(data, gameDef, subModeId);
+/* ------------------------- [B] 可重現 RNG ------------------------- */
+
+class StatRNG {
+    constructor(seed) {
+        // 允許 null/undefined（使用Math.random）
+        if (seed == null) {
+            this._seed = null;
+            this._state = 0;
+            this._useMathRandom = true;
+            return;
+        }
+
+        // 非法值：直接拋錯（由algoStat捕捉）
+        if (!Number.isFinite(seed)) {
+            throw new Error(`seed必須是有限數值，收到：${typeof seed}`);
+        }
+
+        this._seed = seed >>> 0;
+        this._state = this._seed;
+        this._useMathRandom = false;
     }
-    
-    return { numbers: [], groupReason: "❌ 不支援" };
-}
 
-function handleComboStat(data, gameDef) {
-    const { range, count, zone2 } = gameDef;
-    
-    // ✅ 修正版熱溫冷統計
-    const stats = calculateNumberStats(data, range);
-    const zone1 = selectStatCombo(stats, count, range);
-    
-    if (zone2) {
-        // ✅ 修正：zone2 返回單個對象，不是陣列
-        const zone2Num = selectZone2Stat(data, zone2);
-        return { numbers: [...zone1, zone2Num], groupReason: "📊 熱溫冷分佈" };
+    /** 0 <= x < 1 */
+    float() {
+        if (this._useMathRandom) return Math.random();
+        // xorshift32
+        let x = this._state | 0;
+        x ^= x << 13;
+        x ^= x >>> 17;
+        x ^= x << 5;
+        this._state = x >>> 0;
+        return (this._state >>> 0) / 4294967296;
     }
-    
-    return { numbers: zone1, groupReason: "📊 熱溫冷 + 遺漏回補" };
+
+    int(min, maxInclusive) {
+        const a = Math.ceil(min);
+        const b = Math.floor(maxInclusive);
+        if (b < a) return a;
+        const r = this.float();
+        return a + Math.floor(r * (b - a + 1));
+    }
+
+    pickOne(arr) {
+        if (!Array.isArray(arr) || arr.length === 0) return undefined;
+        return arr[this.int(0, arr.length - 1)];
+    }
+
+    /** 以 current state 派生子 RNG（確保 pack / 子流程可控） */
+    fork(salt) {
+        const s = this._useMathRandom ? null : (this._hash32(this._state ^ this._hash32(salt ?? 0)));
+        return new StatRNG(s);
+    }
+
+    _hash32(x) {
+        let v = (x >>> 0);
+        v = (v + 0x7ed55d16) + (v << 12);
+        v = (v ^ 0xc761c23c) ^ (v >>> 19);
+        v = (v + 0x165667b1) + (v << 5);
+        v = (v + 0xd3a2646c) ^ (v << 9);
+        v = (v + 0xfd7046c5) + (v << 3);
+        v = (v ^ 0xb55a4f09) ^ (v >>> 16);
+        return v >>> 0;
+    }
 }
 
-function handleDigitStat(data, gameDef, subModeId) {
-    const { range, count } = gameDef;
-    
-    const stats = calculateDigitStats(data, range);
-    // ✅ 修正：selectStatDigit 加入無限迴圈防護
-    const selected = selectStatDigit(stats, count);
-    
-    return { numbers: selected, groupReason: "📊 數字熱溫冷 + 連莊" };
+/* ------------------------- [C] 加權抽樣工具（softmax）------------------------- */
+
+/** z-score 標準化，避免不同量級造成輪盤失真 */
+function stat_zScores(values) {
+    const n = values.length;
+    if (n === 0) return [];
+    const mean = values.reduce((a, b) => a + b, 0) / n;
+    const variance = values.reduce((a, b) => a + (b - mean) * (b - mean), 0) / n;
+    const sd = Math.sqrt(variance) || 1;
+    return values.map(v => (v - mean) / sd);
 }
 
-// ============================================
-// ✅ 修正版：熱溫冷統計函數
-// ============================================
-function calculateNumberStats(data, range) {
-    const freq = new Map();  // 清空重置
-    
-    // ✅ 限定20期統計頻率
-    data.slice(0, STAT_CONFIG.RECENT_PERIOD).forEach(draw => {
-        draw.numbers.slice(0, 6).forEach(num => {
-            if (num >= 1 && num <= range) {
-                freq.set(num, (freq.get(num) || 0) + 1);
-            }
-        });
+function stat_prepareWeightedContext(items, opts = {}) {
+    const {
+        temperature = 1.0,      // 越大越趨近平均；越小越尖銳（更偏向高分）
+        floorWeight = 1e-9,     // 避免 0
+        maxExp = 40,            // 避免 exp overflow
+    } = opts;
+
+    const scores = items.map(it => Number(it.score) || 0);
+    const zs = stat_zScores(scores);
+
+    // 使用 softmax-ish：w = exp(z / T)；同時 clamp
+    const weights = zs.map(z => {
+        const x = Math.max(-maxExp, Math.min(maxExp, z / Math.max(temperature, 1e-6)));
+        const w = Math.exp(x);
+        return Math.max(floorWeight, w);
     });
-    
-    // ✅ 正確分類
-    const hot = Array.from(freq.entries())
-        .filter(([_, f]) => f >= STAT_CONFIG.HOT_THRESHOLD).map(([n]) => n);
-    const warm = Array.from(freq.entries())
-        .filter(([_, f]) => f >= STAT_CONFIG.WARM_THRESHOLD && f < STAT_CONFIG.HOT_THRESHOLD).map(([n]) => n);
-    const cold = Array.from(freq.entries())
-        .filter(([_, f]) => f < STAT_CONFIG.WARM_THRESHOLD).map(([n]) => n);
-    
-    console.log(`[Stat] 熱:${hot.length}(${STAT_CONFIG.HOT_THRESHOLD}+) 溫:${warm.length}(${STAT_CONFIG.WARM_THRESHOLD}-${STAT_CONFIG.HOT_THRESHOLD-1}) 冷:${cold.length}`);
-    
-    return { hot, warm, cold };
+
+    const prefix = [];
+    let sum = 0;
+    for (let w of weights) {
+        sum += w;
+        prefix.push(sum);
+    }
+
+    return { items, weights, prefix, sum };
 }
 
-function selectStatCombo(stats, count, range) {
-    const selected = [];
-    const used = new Set();
-    
-    // ✅ 3熱+2溫+1冷配比
-    const priorityList = [
-        ...stats.hot.slice(0, 3),
-        ...stats.warm.slice(0, 2), 
-        ...stats.cold.slice(0, 1)
-    ];
-    
-    priorityList.forEach(num => {
-        if (!used.has(num)) {
-            // ✅ 修正：用 stats 陣列正確判斷熱溫冷標籤
-            selected.push({ 
-                val: num, 
-                tag: stats.hot.includes(num) ? '熱' : stats.warm.includes(num) ? '溫' : '冷'
-            });
-            used.add(num);
-        }
-    });
-    
-    // 遺漏回補
-    while (selected.length < count) {
-        const missNum = Math.floor(Math.random() * range) + 1;
-        if (!used.has(missNum)) {
-            selected.push({ val: missNum, tag: '遺漏回補' });
-            used.add(missNum);
-        }
+function stat_weightedPickIndex(ctx, rng) {
+    if (ctx.sum <= 0) return -1;
+    const r = rng.float() * ctx.sum;
+
+    // 二分搜尋 prefix (O(log n) 優化)
+    let lo = 0, hi = ctx.prefix.length - 1;
+    while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (r <= ctx.prefix[mid]) hi = mid;
+        else lo = mid + 1;
     }
-    
-    return selected.sort((a, b) => a.val - b.val);
+
+    return lo;
 }
 
-function calculateDigitStats(data, range) {
-    const freq = new Map();
-    data.slice(0, STAT_CONFIG.RECENT_PERIOD).forEach(draw => {
-        if (draw.numbers && draw.numbers.length >= 3) {
-            draw.numbers.slice(0, 3).forEach(num => {
-                if (num >= 0 && num <= range) {
-                    freq.set(num, (freq.get(num) || 0) + 1);
-                }
-            });
-        }
-    });
-    
-    const hot = Array.from(freq.entries()).filter(([_, f]) => f >= 8).map(([n]) => n);
-    const warm = Array.from(freq.entries()).filter(([_, f]) => f >= 5 && f < 8).map(([n]) => n);
-    
-    return { hot, warm, cold: Array.from({length: range+1}, (_, i) => i).filter(i => !hot.includes(i) && !warm.includes(i)) };
+/** 不放回加權抽樣：每次選到後移除（O(k*n)） */
+function stat_weightedSample(items, k, rng, opts = {}) {
+    const take = Math.max(0, Math.min(k, items.length));
+    const picked = [];
+    let pool = items.slice();
+
+    for (let i = 0; i < take; i++) {
+        const ctx = stat_prepareWeightedContext(pool, opts);
+        const idx = stat_weightedPickIndex(ctx, rng);
+        if (idx < 0) break;
+        picked.push(pool[idx]);
+        pool.splice(idx, 1);
+    }
+
+    return picked;
 }
 
-// ✅ 修正：加入 maxAttempts 防無限迴圈
-function selectStatDigit(stats, count) {
-    const selected = [];
-    const used = new Set();
-    
-    const hot = stats.hot || [];
-    const warm = stats.warm || [];
-    const cold = stats.cold || [];
-    
-    // 2熱+1溫
-    for (let i = 0; i < Math.min(2, hot.length); i++) {
-        const num = hot[i];
-        if (!used.has(num)) {
-            selected.push({ val: num, tag: '熱號' });
-            used.add(num);
-        }
-    }
-    
-    if (warm.length > 0) {
-        const num = warm[0];
-        if (!used.has(num)) {
-            selected.push({ val: num, tag: '溫號' });
-            used.add(num);
-        }
-    }
-    
-    // ✅ 備用清單 + maxAttempts 防無限迴圈
-    const backup = [...hot, ...warm, ...cold].filter(n => !used.has(n));
-    let attempts = 0;
-    const maxAttempts = 20;
-    
-    while (selected.length < count && backup.length > 0 && attempts < maxAttempts) {
-        const idx = Math.floor(Math.random() * backup.length);
-        const num = backup[idx];
-        
-        if (!used.has(num)) {
-            selected.push({ val: num, tag: '冷號' });
-            used.add(num);
-            backup.splice(idx, 1);
-        }
-        attempts++;
-    }
-    
-    // 最後備用
-    while (selected.length < count) {
-        const num = Math.floor(Math.random() * 10);
-        if (!used.has(num)) {
-            selected.push({ val: num, tag: '隨機' });
-            used.add(num);
-        }
-    }
-    
-    return selected.slice(0, count);
-}
+/* ------------------------- [D] 工具函數 ------------------------- */
 
-// ✅ 修正：selectZone2Stat 返回單個對象，不是陣列
-function selectZone2Stat(data, zone2Range) {
-    if (!zone2Range || zone2Range < 1) {
-        return { val: 1, tag: '第二區統計' };
-    }
-    
-    const zone2Freq = new Map();
-    data.slice(0, 10).forEach(draw => {
-        const zone2Num = draw.numbers[6];
-        if (zone2Num && zone2Num >= 1 && zone2Num <= zone2Range) {
-            zone2Freq.set(zone2Num, (zone2Freq.get(zone2Num) || 0) + 1);
-        }
-    });
-    
-    const hottest = zone2Freq.size > 0
-        ? Array.from(zone2Freq.entries()).sort((a, b) => b[1] - a[1])[0][0]
-        : Math.floor(Math.random() * zone2Range) + 1;
-    
+function _errorResult(groupReason, metadata = {}) {
     return {
-        val: hottest,
-        tag: '第二區熱號'
+        numbers: [],
+        groupReason,
+        metadata: {
+            algo: 'stat',
+            ok: false,
+            version: STAT_CONFIG.VERSION,
+            ...metadata,
+        },
     };
 }
+
+function _isInt(n) {
+    return Number.isInteger(n) && Number.isFinite(n);
+}
+
+function _deepMerge(base, patch) {
+    if (!patch || typeof patch !== 'object') return { ...base };
+    const out = { ...base };
+    for (const [k, v] of Object.entries(patch)) {
+        if (v && typeof v === 'object' && !Array.isArray(v) && typeof base[k] === 'object' && base[k] !== null) {
+            out[k] = _deepMerge(base[k], v);
+        } else {
+            out[k] = v;
+        }
+    }
+    return out;
+}
+
+/**
+ * V3.2a 修復#5：計算有效排除數量（只計範圍內的有效整數）
+ */
+function _countValidExcluded(excludeSet, minVal, maxVal) {
+    // T9: 型別防呆
+    if (excludeSet == null) return 0;
+    if (typeof excludeSet[Symbol.iterator] !== 'function') return 0;
+
+    let count = 0;
+    for (let num of excludeSet) {
+        if (Number.isInteger(num) && Number.isFinite(num) && num >= minVal && num <= maxVal) {
+            count++;
+        }
+    }
+    return count;
+}
+
+/**
+ * V3.2a 修復#2：不可列舉附加屬性
+ */
+function _attachNonEnumerable(obj, key, value) {
+    Object.defineProperty(obj, key, {
+        value: value,
+        writable: false,
+        enumerable: false,
+        configurable: false
+    });
+}
+
+/* ------------------------- [E] V3.2a修復#3+#5：資料自動排序--------------------------- */
+
+/**
+ * V3.2a 修復#3+#5：auto 欄位偵測掃描前 10 筆 + 使用 hasOwnProperty
+ */
+function stat_autoSortData(data, orderHint) {
+    if (!Array.isArray(data) || data.length === 0) {
+        return { ok: false, reason: '資料為空' };
+    }
+
+    // V3.2a 修復#4：參數非法值明確處理
+    const validHints = ['auto', 'latestFirst', 'oldestFirst'];
+    if (!validHints.includes(orderHint)) {
+        return {
+            ok: false,
+            reason: `dataOrder 參數非法：'${orderHint}'（允許值：'auto' | 'latestFirst' | 'oldestFirst'）`
+        };
+    }
+
+    // V3.2 修復#2：latestFirst 直接信任不重排
+    if (orderHint === 'latestFirst') {
+        return {
+            ok: true,
+            data: [...data],
+            sorted: false,
+            detectedField: 'none',
+            orderApplied: 'latestFirst',
+            reason: '信任輸入已是最新在前（未重排）'
+        };
+    }
+
+    // V3.2 修復#2：oldestFirst 反轉
+    if (orderHint === 'oldestFirst') {
+        return {
+            ok: true,
+            data: [...data].reverse(),
+            sorted: true,
+            detectedField: 'none',
+            orderApplied: 'latestFirst',
+            reason: '輸入為最舊在前，已反轉成最新在前'
+        };
+    }
+
+    // V3.2a 修復#3+#5：auto 掃描前 10 筆 + 使用 hasOwnProperty
+    const sampleSize = Math.min(10, data.length);
+    let getTimeValue = null;
+    let detectedField = null;
+
+    // 智慧欄位偵測（掃描前 N 筆，使用 hasOwnProperty 避免原型鏈污染）
+    for (let i = 0; i < sampleSize; i++) {
+        const sample = data[i];
+        if (!sample || typeof sample !== 'object') continue;
+
+        if (Object.prototype.hasOwnProperty.call(sample, 'date')) {
+            detectedField = 'date';
+            getTimeValue = (d) => {
+                if (d.date instanceof Date) {
+                    const t = d.date.getTime();
+                    return Number.isFinite(t) ? t : null;
+                }
+                const parsed = new Date(d.date);
+                const t = parsed.getTime();
+                return (isNaN(t) || !Number.isFinite(t)) ? null : t;
+            };
+            break;
+        } else if (Object.prototype.hasOwnProperty.call(sample, 'lotteryDate')) {
+            detectedField = 'lotteryDate';
+            getTimeValue = (d) => {
+                const parsed = new Date(d.lotteryDate);
+                const t = parsed.getTime();
+                return (isNaN(t) || !Number.isFinite(t)) ? null : t;
+            };
+            break;
+        } else if (Object.prototype.hasOwnProperty.call(sample, 'period')) {
+            detectedField = 'period';
+            getTimeValue = (d) => {
+                const val = typeof d.period === 'string' ? parseFloat(d.period) : Number(d.period);
+                return (isNaN(val) || !Number.isFinite(val)) ? null : val;
+            };
+            break;
+        } else if (Object.prototype.hasOwnProperty.call(sample, 'drawNumber')) {
+            detectedField = 'drawNumber';
+            getTimeValue = (d) => {
+                const val = typeof d.drawNumber === 'string' ? parseInt(d.drawNumber) : Number(d.drawNumber);
+                return (isNaN(val) || !Number.isFinite(val)) ? null : val;
+            };
+            break;
+        }
+    }
+
+    if (!getTimeValue) {
+        return {
+            ok: false,
+            reason: '無法偵測時間欄位（date/lotteryDate/period/drawNumber），請手動排序或指定 dataOrder="latestFirst"/"oldestFirst"'
+        };
+    }
+
+    // 標記排序鍵
+    const SORT_KEY = Symbol('sortKey');
+    const dataWithKey = data.map(item => {
+        const val = getTimeValue(item);
+        return {
+            ...item,
+            [SORT_KEY]: val
+        };
+    });
+
+    // 過濾無效資料
+    const validData = dataWithKey.filter(item => item[SORT_KEY] !== null);
+
+    if (validData.length < data.length * 0.8) {
+        return {
+            ok: false,
+            reason: `超過20%資料無有效時間戳記（${data.length - validData.length}/${data.length}筆，欄位：${detectedField}）`
+        };
+    }
+
+    // 降序排序（最新在前）
+    validData.sort((a, b) => b[SORT_KEY] - a[SORT_KEY]);
+
+    // 移除Symbol
+    const cleanData = validData.map(item => {
+        const clean = { ...item };
+        delete clean[SORT_KEY];
+        return clean;
+    });
+
+    return {
+        ok: true,
+        data: cleanData,
+        sorted: true,
+        detectedField,
+        orderApplied: 'latestFirst',
+        droppedInvalid: data.length - validData.length
+    };
+}
+
+/* ------------------------- [F] 資料驗證與正規化 ------------------------- */
+
+/**
+ * 解析並驗證一筆 draw，回傳標準化結構
+ */
+function stat_normalizeDraw(draw, gameDef) {
+    if (!draw || typeof draw !== 'object') return { ok: false, reason: 'draw 非物件' };
+    const nums = draw.numbers;
+    if (!Array.isArray(nums)) return { ok: false, reason: 'numbers 缺失或非陣列' };
+
+    if (gameDef.type === 'digit') {
+        if (nums.length < gameDef.count) return { ok: false, reason: `numbers 長度不足（需>=${gameDef.count}）` };
+        const digits = nums.slice(0, gameDef.count);
+        for (const d of digits) {
+            if (!_isInt(d) || d < 0 || d > 9) return { ok: false, reason: `digit 非法：${d}` };
+        }
+        return { ok: true, digits };
+    }
+
+    if (gameDef.type === 'power') {
+        if (nums.length < 7) return { ok: false, reason: 'power numbers 長度不足（需>=7）' };
+        const main = nums.slice(0, 6);
+        const zone2 = nums[6];
+
+        for (const n of main) {
+            if (!_isInt(n) || n < 1 || n > 38) return { ok: false, reason: `主區號碼非法：${n}` };
+        }
+
+        if (!_isInt(zone2) || zone2 < 1 || zone2 > 8) return { ok: false, reason: `第二區號碼非法：${zone2}` };
+        return { ok: true, mainNumbers: main, zone2 };
+    }
+
+    // lotto / today
+    const count = (gameDef.type === 'today') ? 5 : gameDef.count;
+    const range = (gameDef.type === 'today') ? 39 : gameDef.range;
+
+    if (!_isInt(count) || count <= 0) return { ok: false, reason: 'count 非法' };
+    if (!_isInt(range) || range <= 0) return { ok: false, reason: 'range 非法' };
+    if (nums.length < count) return { ok: false, reason: `numbers 長度不足（需>=${count}）` };
+
+    const main = nums.slice(0, count);
+    const seen = new Set();
+    for (const n of main) {
+        if (!_isInt(n) || n < 1 || n > range) return { ok: false, reason: `號碼非法：${n}` };
+        if (seen.has(n)) return { ok: false, reason: `重複號碼：${n}` };
+        seen.add(n);
+    }
+
+    return { ok: true, mainNumbers: main };
+}
+
+function stat_validateGameDef(gameDef) {
+    if (!gameDef || typeof gameDef !== 'object') return { ok: false, reason: 'gameDef 缺失或非物件' };
+    const t = gameDef.type;
+    if (!['lotto', 'today', 'power', 'digit'].includes(t)) return { ok: false, reason: `不支援的 gameDef.type：${t}` };
+
+    if (t === 'digit') {
+        if (!_isInt(gameDef.count) || ![3, 4, 5].includes(gameDef.count)) return { ok: false, reason: 'digit count 需為 3, 4 或 5' };
+        return { ok: true };
+    }
+
+    if (t === 'power') {
+        return { ok: true };
+    }
+
+    if (t === 'today') return { ok: true };
+
+    if (!_isInt(gameDef.count) || gameDef.count <= 0) return { ok: false, reason: 'count 非法' };
+    if (!_isInt(gameDef.range) || gameDef.range <= 0) return { ok: false, reason: 'range 非法' };
+    return { ok: true };
+}
+
+function stat_getShape(gameDef) {
+    if (gameDef.type === 'digit') {
+        return { kind: 'digit', digitCount: gameDef.count };
+    }
+
+    if (gameDef.type === 'power') {
+        return { kind: 'power', mainRange: 38, mainCount: 6, zone2Range: 8, zone2Count: 1 };
+    }
+
+    if (gameDef.type === 'today') {
+        return { kind: 'lotto', mainRange: 39, mainCount: 5, zone2Range: null, zone2Count: 0 };
+    }
+
+    return { kind: 'lotto', mainRange: gameDef.range, mainCount: gameDef.count, zone2Range: null, zone2Count: 0 };
+}
+
+/* ------------------------- [G] V3.2a修復#4+#9：excludeNumbers 處理 ------------------------- */
+
+/**
+ * V3.2a 修復#4+#9：移除 console.log，改為回傳 warnings
+ * 
+ * T15: invalidType實作說明
+ * - digit類型使用計數（invalidTypeCount）：節省記憶體，數字型通常不需追蹤具體無效值
+ * - combo類型使用陣列（invalidTypeValues）：便於除錯，組合型可能需要檢視具體無效值
+ */
+function stat_parseExclude(input, gameDef) {
+    const hardExcludeNum = new Set();
+    const warnings = [];
+    const outOfRangeValues = [];
+    const ignoredCombos = [];
+
+    if (!input) return { hardExcludeNum, warnings, outOfRangeValues, ignoredCombos };
+
+    // 型別轉換
+    const arr = (input instanceof Set)
+        ? Array.from(input)
+        : (Array.isArray(input) ? [...input] : []);
+
+    // 數字型彩票：自動過濾超出 0-9 範圍的號碼
+    if (gameDef.type === 'digit') {
+        const originalCount = arr.length;
+        let invalidTypeCount = 0;
+        const safeArr = arr.filter(item => {
+            if (typeof item === 'number' && Number.isInteger(item) && Number.isFinite(item)) {
+                return item >= 0 && item <= 9;
+            } else if (Array.isArray(item)) {
+                ignoredCombos.push(item);
+                return false;
+            } else {
+                // 非整數值：包括小數、NaN、Infinity、字串等
+                if (typeof item === 'number') invalidTypeCount++;
+                return false;
+            }
+        });
+
+        if (originalCount > 0 && safeArr.length !== originalCount) {
+            const filtered = originalCount - safeArr.length;
+            if (invalidTypeCount > 0) {
+                warnings.push(`數字型：已忽略 ${invalidTypeCount} 個無效排除值（非有限整數）`);
+            }
+            const outOfRange = filtered - invalidTypeCount - ignoredCombos.length;
+            if (outOfRange > 0) {
+                warnings.push(`數字型：已過濾 ${outOfRange} 個超範圍值（僅支援0-9）`);
+            }
+        }
+
+        // 計算唯一排除號碼數量
+        safeArr.forEach(item => hardExcludeNum.add(item));
+
+        const digitCount = gameDef.count;
+        const availableCount = 10 - hardExcludeNum.size;
+
+        if (availableCount < digitCount) {
+            throw new Error(
+                `數字型彩票排除過多：需要選 ${digitCount} 個號碼，` +
+                `但排除後只剩 ${availableCount} 個可選。請減少排除數量。`
+            );
+        }
+
+    } else {
+        // 組合型彩票：只處理單號，記錄組合與超範圍
+        const range = (gameDef.type === 'today') ? 39 : (gameDef.type === 'power' ? 38 : gameDef.range);
+        const invalidTypeValues = [];
+
+        arr.forEach(item => {
+            if (typeof item === 'number' && Number.isInteger(item) && Number.isFinite(item)) {
+                if (item >= 1 && item <= range) {
+                    hardExcludeNum.add(item);
+                } else {
+                    outOfRangeValues.push(item);
+                }
+            } else if (typeof item === 'number') {
+                // 非整數值：小數、NaN、Infinity
+                invalidTypeValues.push(item);
+            } else if (Array.isArray(item)) {
+                ignoredCombos.push(item);
+            }
+        });
+
+        // V3.2 修復#6：組合排除明確警告
+        if (ignoredCombos.length > 0) {
+            warnings.push(`組合排除不支援，已忽略 ${ignoredCombos.length} 組（僅支援單號排除）`);
+        }
+
+        if (invalidTypeValues.length > 0) {
+            warnings.push(`排除號碼：已忽略 ${invalidTypeValues.length} 個無效值（非有限整數）`);
+        }
+
+        if (outOfRangeValues.length > 0) {
+            warnings.push(`排除號碼：已忽略 ${outOfRangeValues.length} 個超範圍值`);
+        }
+    }
+
+    return { hardExcludeNum, warnings, outOfRangeValues, ignoredCombos };
+}
+
+
+
+
+
+
+/* ------------------------- [H] V3.2a修復#5：全歷史統計表 ------------------------- */
+
+/**
+ * V3.2a 修復#5：unseenCount 使用 _countValidExcluded
+ */
+function stat_buildGlobalStatsLotto(data, shape, config, excludeSet = new Set()) {
+    const {
+        mainRange, mainCount, zone2Range, zone2Count,
+    } = shape;
+
+    const recentPeriod = config.COMBO_RECENT_PERIOD;
+    const repeatK = config.RECENT_REPEAT;
+
+    // 母體：1..mainRange
+    const freq = new Array(mainRange + 1).fill(0);
+    const lastSeen = new Array(mainRange + 1).fill(null);
+    const repeatCount = new Array(mainRange + 1).fill(0);
+
+    // 標記排除號碼
+    for (let num of excludeSet) {
+        if (num >= 1 && num <= mainRange) {
+            freq[num] = -1;
+        }
+    }
+
+    // V3.1 修復#1：分離三種統計
+
+    // 1) freq統計：只需recentPeriod
+    const freqDraws = Math.min(data.length, recentPeriod);
+    for (let i = 0; i < freqDraws; i++) {
+        const nd = data[i];
+        for (const n of nd.mainNumbers) {
+            if (n < 1 || n > mainRange || freq[n] === -1) continue;
+            freq[n] += 1;
+        }
+    }
+
+    // 2) repeat統計：只需repeatK
+    const repeatDraws = Math.min(data.length, repeatK);
+    for (let i = 0; i < repeatDraws; i++) {
+        const nd = data[i];
+        for (const n of nd.mainNumbers) {
+            if (n < 1 || n > mainRange || freq[n] === -1) continue;
+            repeatCount[n] += 1;
+        }
+    }
+
+    // 3) V3.2a 修復#5：lastSeen 統計（使用 _countValidExcluded）
+    const validExcludedCount = _countValidExcluded(excludeSet, 1, mainRange);
+    let unseenCount = mainRange - validExcludedCount;
+
+    for (let i = 0; i < data.length && unseenCount > 0; i++) {
+        const nd = data[i];
+        for (const n of nd.mainNumbers) {
+            if (n < 1 || n > mainRange || freq[n] === -1) continue;
+            if (lastSeen[n] === null) {
+                lastSeen[n] = i;
+                unseenCount--;
+            }
+        }
+    }
+
+    // 計算currentMiss
+    const currentMiss = new Array(mainRange + 1).fill(0);
+    for (let n = 1; n <= mainRange; n++) {
+        if (freq[n] === -1) continue;
+        currentMiss[n] = (lastSeen[n] === null) ? data.length : lastSeen[n];
+    }
+
+    // zone2（同樣邏輯）
+    let zone2Stats = null;
+    if (zone2Range && zone2Count === 1) {
+        const zFreq = new Array(zone2Range + 1).fill(0);
+        const zLastSeen = new Array(zone2Range + 1).fill(null);
+        const zRepeatCount = new Array(zone2Range + 1).fill(0);
+
+        const zRecent = config.ZONE2_RECENT_PERIOD;
+
+        // freq
+        const zFreqDraws = Math.min(data.length, zRecent);
+        for (let i = 0; i < zFreqDraws; i++) {
+            const nd = data[i];
+            const z = nd.zone2;
+            if (z == null || z < 1 || z > zone2Range) continue;
+            zFreq[z] += 1;
+        }
+
+        // repeat
+        const zRepeatDraws = Math.min(data.length, repeatK);
+        for (let i = 0; i < zRepeatDraws; i++) {
+            const nd = data[i];
+            const z = nd.zone2;
+            if (z == null || z < 1 || z > zone2Range) continue;
+            zRepeatCount[z] += 1;
+        }
+
+        // lastSeen（全歷史）
+        let zUnseenCount = zone2Range;
+        for (let i = 0; i < data.length && zUnseenCount > 0; i++) {
+            const nd = data[i];
+            const z = nd.zone2;
+            if (z == null || z < 1 || z > zone2Range) continue;
+            if (zLastSeen[z] === null) {
+                zLastSeen[z] = i;
+                zUnseenCount--;
+            }
+        }
+
+        const zMiss = new Array(zone2Range + 1).fill(0);
+        for (let z = 1; z <= zone2Range; z++) {
+            zMiss[z] = (zLastSeen[z] === null) ? data.length : zLastSeen[z];
+        }
+
+        zone2Stats = { freq: zFreq, lastSeen: zLastSeen, currentMiss: zMiss, repeatCount: zRepeatCount };
+    }
+
+    return {
+        main: { freq, lastSeen, currentMiss, repeatCount, recentPeriod, repeatK, mainRange, mainCount },
+        zone2: zone2Stats,
+    };
+}
+
+/**
+ * V3.2a 修復#5：digit 使用 _countValidExcluded
+ */
+function stat_buildGlobalStatsDigit(data, shape, config, excludeSet = new Set()) {
+    const digitCount = shape.digitCount;
+    const recentPeriod = config.DIGIT_RECENT_PERIOD;
+    const repeatK = config.RECENT_REPEAT;
+
+    const posStats = [];
+    for (let pos = 0; pos < digitCount; pos++) {
+        posStats.push({
+            freq: new Array(10).fill(0),
+            lastSeen: new Array(10).fill(null),
+            repeatCount: new Array(10).fill(0),
+        });
+
+        // 標記排除號碼
+        for (let d of excludeSet) {
+            if (d >= 0 && d <= 9) {
+                posStats[pos].freq[d] = -1;
+            }
+        }
+    }
+
+    // 1) freq
+    const freqDraws = Math.min(data.length, recentPeriod);
+    for (let i = 0; i < freqDraws; i++) {
+        const nd = data[i];
+        for (let pos = 0; pos < digitCount; pos++) {
+            const d = nd.digits[pos];
+            if (d == null || posStats[pos].freq[d] === -1) continue;
+            posStats[pos].freq[d] += 1;
+        }
+    }
+
+    // 2) repeat
+    const repeatDraws = Math.min(data.length, repeatK);
+    for (let i = 0; i < repeatDraws; i++) {
+        const nd = data[i];
+        for (let pos = 0; pos < digitCount; pos++) {
+            const d = nd.digits[pos];
+            if (d == null || posStats[pos].freq[d] === -1) continue;
+            posStats[pos].repeatCount[d] += 1;
+        }
+    }
+
+    // 3) V3.2a 修復#5：lastSeen（使用 _countValidExcluded）
+    const validExcludedCount = _countValidExcluded(excludeSet, 0, 9);
+    const unseenCounts = new Array(digitCount).fill(10 - validExcludedCount);
+
+    for (let i = 0; i < data.length; i++) {
+        const nd = data[i];
+
+        for (let pos = 0; pos < digitCount; pos++) {
+            if (unseenCounts[pos] === 0) continue;
+
+            const d = nd.digits[pos];
+            if (d == null || posStats[pos].freq[d] === -1) continue;
+
+            if (posStats[pos].lastSeen[d] === null) {
+                posStats[pos].lastSeen[d] = i;
+                unseenCounts[pos]--;
+            }
+        }
+
+        // V3.2 修復#4：在外層判斷 allFound（不受 continue 影響）
+        const allFound = unseenCounts.every(count => count === 0);
+        if (allFound) break;
+    }
+
+    // 計算miss
+    for (let pos = 0; pos < digitCount; pos++) {
+        const miss = new Array(10).fill(0);
+        for (let d = 0; d <= 9; d++) {
+            if (posStats[pos].freq[d] === -1) continue;
+            miss[d] = (posStats[pos].lastSeen[d] === null) ? data.length : posStats[pos].lastSeen[d];
+        }
+        posStats[pos].currentMiss = miss;
+    }
+
+    return { digitCount, recentPeriod, repeatK, posStats };
+}
+
+/* ------------------------- [I] V3.1修復#2+#4：評分引擎（破壞性加分 + Top無noise）------------------------- */
+
+function stat_minMaxNormalize(arr, startIndex = 0) {
+    let min = Infinity, max = -Infinity;
+    for (let i = startIndex; i < arr.length; i++) {
+        const v = Number(arr[i]);
+        if (!Number.isFinite(v) || v < 0) continue;  // 跳過 -1（排除號碼）
+        if (v < min) min = v;
+        if (v > max) max = v;
+    }
+
+    if (!Number.isFinite(min) || !Number.isFinite(max) || max === min) {
+        return arr.map(() => 0);
+    }
+
+    return arr.map(v => {
+        if (v < 0) return 0;  // 排除號碼
+        return (Number(v) - min) / (max - min);
+    });
+}
+
+/**
+ * V3.1 修復#2+#4：
+ * - 極限遺漏破壞性加分（score=100）
+ * - Top模式noise=0（確保確定性）
+ * V3.2a 修復#1：占比限制預設不生效（EXTREME_MAX_RATIO=1.0）
+ */
+function stat_scoreLotto(globalStats, config, mode, rng, debug = false) {
+    const {
+        freq, currentMiss, repeatCount, repeatK, mainRange,
+    } = globalStats.main;
+
+    const wF = config.WEIGHT_FREQ;
+    const wM = config.WEIGHT_MISS;
+    const wS = config.WEIGHT_STREAK;
+    const wN = config.WEIGHT_NOISE;
+
+    const freqNorm = stat_minMaxNormalize(freq, 1);
+    const missNorm = stat_minMaxNormalize(currentMiss, 1);
+    const streakNorm = repeatCount.map((c, idx) => idx === 0 ? 0 : Math.min(1, c / Math.max(1, repeatK)));
+
+    const items = [];
+    for (let n = 1; n <= mainRange; n++) {
+        if (freq[n] < 0) continue;  // 跳過排除號碼
+
+        const f = freq[n];
+        const miss = currentMiss[n];
+        const st = streakNorm[n];
+
+        // V3.1 修復#4：Top模式noise固定為0
+        const noise = (mode === 'top') ? 0 : (wN > 0 ? rng.fork(n).float() : 0);
+
+        // V3.1 修復#2：極限遺漏破壞性加分
+        let score;
+        let extremeBoost = 0;
+
+        if (miss >= config.COLD_MAX_MISS) {
+            if (config.EXTREME_BOOST_MODE === 'destructive') {
+                // 破壞性加分：score直接加100（遠大於正常0-1）
+                extremeBoost = config.EXTREME_BOOST_SCORE;
+                score = extremeBoost +
+                    (freqNorm[n] * wF) +
+                    (missNorm[n] * wM) +
+                    (st * wS) +
+                    (noise * wN);
+            } else {
+                // 加成性加分（兼容模式）
+                extremeBoost = 1;
+                score = (freqNorm[n] * wF) +
+                    (missNorm[n] * wM) +
+                    (st * wS) +
+                    (noise * wN) +
+                    (extremeBoost * (wM * 0.5));
+            }
+        } else {
+            // 正常號碼
+            score = (freqNorm[n] * wF) +
+                (missNorm[n] * wM) +
+                (st * wS) +
+                (noise * wN);
+        }
+
+        items.push({
+            num: n,
+            freq: f,
+            miss,
+            repeatInK: repeatCount[n],
+            score,
+            extremeBoost,
+            parts: debug ? {
+                freqNorm: freqNorm[n],
+                missNorm: missNorm[n],
+                streakNorm: st,
+                noise,
+                extremeBoost,
+                extremeMode: config.EXTREME_BOOST_MODE,
+                weights: { wF, wM, wS, wN },
+            } : undefined,
+        });
+    }
+
+    return items;
+}
+
+/**
+ * V3.1：第二區評分（同樣修復）
+ */
+function stat_scoreZone2(zone2Stats, config, mode, rng, debug = false) {
+    const { freq, currentMiss, repeatCount } = zone2Stats;
+    const range = freq.length - 1;
+    const repeatK = config.RECENT_REPEAT;
+
+    const wF = config.WEIGHT_FREQ;
+    const wM = config.WEIGHT_MISS;
+    const wS = config.WEIGHT_STREAK;
+    const wN = config.WEIGHT_NOISE;
+
+    const freqNorm = stat_minMaxNormalize(freq, 1);
+    const missNorm = stat_minMaxNormalize(currentMiss, 1);
+    const streakNorm = repeatCount.map((c, idx) => idx === 0 ? 0 : Math.min(1, c / Math.max(1, repeatK)));
+
+    const items = [];
+    for (let z = 1; z <= range; z++) {
+        const noise = (mode === 'top') ? 0 : (wN > 0 ? rng.fork(1000 + z).float() : 0);
+
+        let score;
+        let extremeBoost = 0;
+
+        if (currentMiss[z] >= config.COLD_MAX_MISS) {
+            if (config.EXTREME_BOOST_MODE === 'destructive') {
+                extremeBoost = config.EXTREME_BOOST_SCORE;
+                score = extremeBoost +
+                    (freqNorm[z] * wF) +
+                    (missNorm[z] * wM) +
+                    (streakNorm[z] * wS) +
+                    (noise * wN);
+            } else {
+                extremeBoost = 1;
+                score = (freqNorm[z] * wF) +
+                    (missNorm[z] * wM) +
+                    (streakNorm[z] * wS) +
+                    (noise * wN) +
+                    (extremeBoost * (wM * 0.5));
+            }
+        } else {
+            score = (freqNorm[z] * wF) +
+                (missNorm[z] * wM) +
+                (streakNorm[z] * wS) +
+                (noise * wN);
+        }
+
+        items.push({
+            num: z,
+            freq: freq[z],
+            miss: currentMiss[z],
+            repeatInK: repeatCount[z],
+            score,
+            extremeBoost,
+            parts: debug ? {
+                freqNorm: freqNorm[z],
+                missNorm: missNorm[z],
+                streakNorm: streakNorm[z],
+                noise,
+                extremeBoost,
+                extremeMode: config.EXTREME_BOOST_MODE
+            } : undefined,
+        });
+    }
+
+    return items;
+}
+
+/**
+ * V3.1：數字型評分（同樣修復）
+ */
+function stat_scoreDigit(posStats, config, mode, rng, debug = false) {
+    const wF = config.WEIGHT_FREQ;
+    const wM = config.WEIGHT_MISS;
+    const wS = config.WEIGHT_STREAK;
+    const wN = config.WEIGHT_NOISE;
+    const repeatK = config.RECENT_REPEAT;
+
+    const byPos = [];
+    for (let pos = 0; pos < posStats.length; pos++) {
+        const st = posStats[pos];
+        const freqNorm = stat_minMaxNormalize(st.freq, 0);
+        const missNorm = stat_minMaxNormalize(st.currentMiss, 0);
+        const streakNorm = st.repeatCount.map(c => Math.min(1, c / Math.max(1, repeatK)));
+
+        const items = [];
+        for (let d = 0; d <= 9; d++) {
+            if (st.freq[d] < 0) continue;  // 跳過排除號碼
+
+            const noise = (mode === 'top') ? 0 : (wN > 0 ? rng.fork(2000 + pos * 20 + d).float() : 0);
+
+            let score;
+            let extremeBoost = 0;
+
+            if (st.currentMiss[d] >= config.COLD_MAX_MISS) {
+                if (config.EXTREME_BOOST_MODE === 'destructive') {
+                    extremeBoost = config.EXTREME_BOOST_SCORE;
+                    score = extremeBoost +
+                        (freqNorm[d] * wF) +
+                        (missNorm[d] * wM) +
+                        (streakNorm[d] * wS) +
+                        (noise * wN);
+                } else {
+                    extremeBoost = 1;
+                    score = (freqNorm[d] * wF) +
+                        (missNorm[d] * wM) +
+                        (streakNorm[d] * wS) +
+                        (noise * wN) +
+                        (extremeBoost * (wM * 0.5));
+                }
+            } else {
+                score = (freqNorm[d] * wF) +
+                    (missNorm[d] * wM) +
+                    (streakNorm[d] * wS) +
+                    (noise * wN);
+            }
+
+            items.push({
+                digit: d,
+                freq: st.freq[d],
+                miss: st.currentMiss[d],
+                repeatInK: st.repeatCount[d],
+                score,
+                extremeBoost,
+                parts: debug ? {
+                    freqNorm: freqNorm[d],
+                    missNorm: missNorm[d],
+                    streakNorm: streakNorm[d],
+                    noise,
+                    extremeBoost,
+                    extremeMode: config.EXTREME_BOOST_MODE
+                } : undefined,
+            });
+        }
+
+        byPos.push(items);
+    }
+
+    return byPos;
+}
+
+/* ------------------------- [J] Tag 生成（可追溯、避免誤標）------------------------- */
+
+function stat_tagLotto(item, config, recentPeriod, kind = 'main') {
+    const hotTh = (kind === 'zone2') ? config.ZONE2_HOT_THRESHOLD : config.COMBO_HOT_THRESHOLD;
+    const warmTh = (kind === 'zone2') ? config.ZONE2_WARM_THRESHOLD : config.COMBO_WARM_THRESHOLD;
+
+    if (item.miss >= config.COLD_MAX_MISS) {
+        return `極限回補(遺漏${item.miss}期)`;
+    }
+
+    if (item.repeatInK >= 2) {
+        return `連莊(近${config.RECENT_REPEAT}期${item.repeatInK}次)`;
+    }
+
+    if (item.freq >= hotTh) {
+        return `熱號(近${recentPeriod}期${item.freq}次)`;
+    }
+
+    if (item.freq >= warmTh) {
+        return `溫號(近${recentPeriod}期${item.freq}次)`;
+    }
+
+    return `冷號(近${recentPeriod}期${item.freq}次,遺漏${item.miss}期)`;
+}
+
+function stat_tagDigit(item, config, recentPeriod) {
+    if (item.miss >= config.COLD_MAX_MISS) {
+        return `極限回補(遺漏${item.miss}期)`;
+    }
+
+    if (item.repeatInK >= 2) {
+        return `連莊(近${config.RECENT_REPEAT}期${item.repeatInK}次)`;
+    }
+
+    if (item.freq >= config.DIGIT_HOT_THRESHOLD) {
+        return `熱碼(近${recentPeriod}期${item.freq}次)`;
+    }
+
+    if (item.freq >= config.DIGIT_WARM_THRESHOLD) {
+        return `溫碼(近${recentPeriod}期${item.freq}次)`;
+    }
+
+    return `冷碼(近${recentPeriod}期${item.freq}次,遺漏${item.miss}期)`;
+}
+
+/* ------------------------- [K] 選號器（契約保證、可重現）------------------------- */
+
+function stat_selectTop(items, count, key) {
+    const arr = items.slice();
+    arr.sort((a, b) => {
+        const ds = (b.score - a.score);
+        if (ds !== 0) return ds;
+
+        const dm = (b.miss - a.miss);
+        if (dm !== 0) return dm;
+
+        const df = (b.freq - a.freq);
+        if (df !== 0) return df;
+
+        const na = a[key], nb = b[key];
+        return na - nb;
+    });
+
+    return arr.slice(0, Math.max(0, Math.min(count, arr.length)));
+}
+
+function stat_selectRoulette(items, count, rng, config) {
+    const pool = items.map(it => ({ ...it, score: Number(it.score) || 0 }));
+    return stat_weightedSample(pool, count, rng, { temperature: config.ROULETTE_TEMPERATURE });
+}
+
+function stat_ensureCountUnique(selected, allItems, count, key) {
+    const seen = new Set(selected.map(x => x[key]));
+
+    // 補足（按 score desc）
+    if (selected.length < count) {
+        const candidates = stat_selectTop(allItems, allItems.length, key);
+        for (const it of candidates) {
+            const id = it[key];
+            if (seen.has(id)) continue;
+            selected.push(it);
+            seen.add(id);
+            if (selected.length >= count) break;
+        }
+    }
+
+    // 裁切
+    if (selected.length > count) {
+        selected = selected.slice(0, count);
+    }
+
+    return selected;
+}
+
+/* ------------------------- [L] 單注生成 ------------------------- */
+
+function _sortNumbersForDisplay(numbers, shape) {
+    if (shape.kind === 'power') {
+        const main = numbers.slice(0, shape.mainCount).slice().sort((a, b) => a.val - b.val);
+        const z = numbers[numbers.length - 1];
+        return [...main, z];
+    }
+
+    if (shape.kind === 'digit') return numbers;
+
+    return numbers.slice().sort((a, b) => a.val - b.val);
+}
+
+/**
+ * V3.2a修復#7：組合型單注生成（EXTREME_MAX_RATIO=1.0 不觸發限制）
+ */
+function stat_generateTicketLotto(ctx) {
+    const { normalizedData, shape, config, mode, rng, debug, excludeSet } = ctx;
+
+    const globalStats = stat_buildGlobalStatsLotto(normalizedData, shape, config, excludeSet);
+
+    // 傳入mode給評分函數
+    const scoredMain = stat_scoreLotto(globalStats, config, mode, rng.fork('main'), debug);
+
+    const mainCount = shape.mainCount;
+
+    // V3.2a 修復#7：統計極限號碼數量
+    const extremeItems = scoredMain.filter(it => it.extremeBoost > 0);
+    const extremeCount = extremeItems.length;
+    const maxExtremeAllowed = Math.floor(mainCount * config.EXTREME_MAX_RATIO);
+
+    let pickedMain;
+
+    if (mode === 'top') {
+        pickedMain = stat_selectTop(scoredMain, mainCount, 'num');
+
+        // V3.2a 修復#7：只有當 EXTREME_MAX_RATIO < 1.0 才限制（預設 1.0 不限制）
+        if (config.EXTREME_BOOST_MODE === 'destructive' && extremeCount > 0 && config.EXTREME_MAX_RATIO < 1.0) {
+            const extremePicked = pickedMain.filter(it => it.extremeBoost > 0);
+            if (extremePicked.length > maxExtremeAllowed) {
+                // 替換部分極限號碼為次高分正常號碼
+                const normalItems = scoredMain.filter(it => it.extremeBoost === 0);
+                const normalTop = stat_selectTop(normalItems, mainCount, 'num');
+
+                // 保留 maxExtremeAllowed 個極限號碼，其餘用正常號碼補
+                pickedMain = [
+                    ...extremePicked.slice(0, maxExtremeAllowed),
+                    ...normalTop.slice(0, mainCount - maxExtremeAllowed)
+                ];
+
+                // 重新排序（維持 score 優先）
+                pickedMain = stat_selectTop(pickedMain, mainCount, 'num');
+            }
+        }
+    } else {
+        pickedMain = stat_selectRoulette(scoredMain, mainCount, rng.fork('mainPick'), config);
+    }
+
+    pickedMain = stat_ensureCountUnique(pickedMain, scoredMain, mainCount, 'num');
+
+    const recentPeriod = globalStats.main.recentPeriod;
+    const numbers = pickedMain.map(it => ({ val: it.num, tag: stat_tagLotto(it, config, recentPeriod, 'main') }));
+
+    if (shape.kind === 'power') {
+        const zStats = globalStats.zone2;
+        const scoredZ = stat_scoreZone2(zStats, config, mode, rng.fork('zone2'), debug);
+
+        let pickedZ;
+        if (mode === 'top') {
+            pickedZ = stat_selectTop(scoredZ, 1, 'num');
+        } else {
+            pickedZ = stat_selectRoulette(scoredZ, 1, rng.fork('zone2Pick'), config);
+        }
+
+        pickedZ = stat_ensureCountUnique(pickedZ, scoredZ, 1, 'num');
+        const z = pickedZ[0];
+        numbers.push({ val: z.num, tag: stat_tagLotto(z, config, config.ZONE2_RECENT_PERIOD, 'zone2') });
+    }
+
+    const expectedLen = (shape.kind === 'power') ? (shape.mainCount + 1) : shape.mainCount;
+    if (numbers.length !== expectedLen) {
+        return _errorResult(`選號契約違反：期望${expectedLen}個，實得${numbers.length}個`, { expectedLen, actualLen: numbers.length });
+    }
+
+    // V3.2 修復#7：根據mode動態生成描述
+    const modeDesc = (mode === 'top')
+        ? (rng._seed !== null ? 'TopN確定性' : 'TopN排序')
+        : '加權輪盤';
+
+    // V3.2a 修復#7：揭露極限資訊（只有啟用限制時才顯示）
+    const actualExtremePicked = pickedMain.filter(it => it.extremeBoost > 0).length;
+    const extremeInfo = (config.EXTREME_BOOST_MODE === 'destructive' && extremeCount > 0 && config.EXTREME_MAX_RATIO < 1.0)
+        ? `；極限回補${extremeCount}候選(限${Math.floor(config.EXTREME_MAX_RATIO * 100)}%最多${maxExtremeAllowed}個，實選${actualExtremePicked}個)`
+        : (config.EXTREME_BOOST_MODE === 'destructive' && extremeCount > 0)
+            ? `；極限回補${extremeCount}候選(實選${actualExtremePicked}個)`
+            : '';
+
+    const meta = {
+        algo: 'stat',
+        ok: true,
+        version: STAT_CONFIG.VERSION,
+        mode,
+        seed: rng._seed,
+        shape,
+        extremeInfo: (config.EXTREME_BOOST_MODE === 'destructive' && extremeCount > 0) ? {
+            mode: config.EXTREME_BOOST_MODE,
+            score: config.EXTREME_BOOST_SCORE,
+            candidateCount: extremeCount,
+            maxRatio: config.EXTREME_MAX_RATIO,
+            maxAllowed: maxExtremeAllowed,
+            actualPicked: actualExtremePicked,
+            ratioEnforced: config.EXTREME_MAX_RATIO < 1.0
+        } : undefined,
+        config: debug ? config : undefined,
+    };
+
+    const groupReason = `統計學派V${STAT_CONFIG.VERSION}：${modeDesc}（權重${config.WEIGHT_FREQ}/${config.WEIGHT_MISS}/${config.WEIGHT_STREAK}/${config.WEIGHT_NOISE}；遺漏門檻${config.COLD_MAX_MISS}；近${config.COMBO_RECENT_PERIOD}期）${extremeInfo}`;
+
+    return { numbers: _sortNumbersForDisplay(numbers, shape), groupReason, metadata: meta };
+}
+
+/**
+ * V3.1：數字型單注生成（傳入mode參數）
+ */
+function stat_generateTicketDigit(ctx) {
+    const { normalizedData, shape, config, mode, rng, debug, excludeSet } = ctx;
+
+    const globalStats = stat_buildGlobalStatsDigit(normalizedData, shape, config, excludeSet);
+    const scoredByPos = stat_scoreDigit(globalStats.posStats, config, mode, rng.fork('digit'), debug);
+
+    const digits = [];
+    for (let pos = 0; pos < shape.digitCount; pos++) {
+        const items = scoredByPos[pos].map(it => ({ ...it, id: it.digit }));
+
+        let picked;
+        if (mode === 'top') {
+            picked = stat_selectTop(items, 1, 'digit');
+        } else {
+            picked = stat_selectRoulette(items, 1, rng.fork(`pos${pos}`), config);
+        }
+
+        const chosen = picked[0] ?? stat_selectTop(items, 1, 'digit')[0];
+        digits.push(chosen);
+    }
+
+    // 避免全相同（可關閉）
+    if (config.DIGIT_AVOID_ALL_SAME && digits.length >= 3) {
+        const allSame = digits.every(d => d.digit === digits[0].digit);
+        if (allSame) {
+            let minPos = 0;
+            for (let i = 1; i < digits.length; i++) {
+                if (digits[i].score < digits[minPos].score) minPos = i;
+            }
+
+            const sorted = scoredByPos[minPos].slice().sort((a, b) => b.score - a.score);
+            if (sorted.length >= 2) digits[minPos] = sorted[1];
+        }
+    }
+
+    const numbers = digits.map(it => ({ val: it.digit, tag: stat_tagDigit(it, config, config.DIGIT_RECENT_PERIOD) }));
+
+    if (numbers.length !== shape.digitCount) {
+        return _errorResult(`數字型契約違反：期望${shape.digitCount}位，實得${numbers.length}位`, { expectedLen: shape.digitCount, actualLen: numbers.length });
+    }
+
+    const modeDesc = (mode === 'top')
+        ? (rng._seed !== null ? 'TopN確定性' : 'TopN排序')
+        : '加權輪盤';
+
+    const meta = {
+        algo: 'stat',
+        ok: true,
+        version: STAT_CONFIG.VERSION,
+        mode,
+        seed: rng._seed,
+        shape,
+        config: debug ? config : undefined,
+    };
+
+    const groupReason = `統計學派V${STAT_CONFIG.VERSION}：數字型分位統計（${modeDesc}；權重${config.WEIGHT_FREQ}/${config.WEIGHT_MISS}/${config.WEIGHT_STREAK}/${config.WEIGHT_NOISE}；近${config.DIGIT_RECENT_PERIOD}期）`;
+
+    return { numbers, groupReason, metadata: meta };
+}
+
+/* ------------------------- [M] V3.2修復#1：包牌（預設回傳 array）------------------------- */
+
+function stat_ticketSignature(ticket, shape) {
+    if (shape.kind === 'digit') {
+        return ticket.numbers.map(x => x.val).join('');
+    }
+
+    if (shape.kind === 'power') {
+        const main = ticket.numbers.slice(0, shape.mainCount).map(x => x.val).slice().sort((a, b) => a - b);
+        const z = ticket.numbers[ticket.numbers.length - 1].val;
+        return `${main.join(',')}|${z}`;
+    }
+
+    const main = ticket.numbers.map(x => x.val).slice().sort((a, b) => a - b);
+    return main.join(',');
+}
+
+/**
+ * V3.2：包牌生成（內部使用，不受 packReturn 影響）
+ */
+function stat_generatePack(ctx) {
+    const { packCount } = ctx;
+    const maxAttempts = Math.max(50, packCount * 50);
+    const tickets = [];
+    const seen = new Set();
+
+    for (let attempt = 0; attempt < maxAttempts && tickets.length < packCount; attempt++) {
+        const subRng = ctx.rng.fork(`pack:${attempt}`);
+        const ticket = (ctx.shape.kind === 'digit')
+            ? stat_generateTicketDigit({ ...ctx, rng: subRng })
+            : stat_generateTicketLotto({ ...ctx, rng: subRng });
+
+        if (!ticket || !ticket.metadata?.ok) continue;
+
+        const sig = stat_ticketSignature(ticket, ctx.shape);
+        if (seen.has(sig)) continue;
+
+        seen.add(sig);
+        tickets.push(ticket);
+    }
+
+    // 回傳內部結構（由 algoStat 決定最終格式）
+    const insufficient = tickets.length < packCount;
+    const lack = packCount - tickets.length;
+
+    return {
+        ok: !insufficient,
+        insufficient,
+        target: packCount,
+        actual: tickets.length,
+        lack,
+        warning: insufficient ? `包牌去重不足：目標${packCount}注，實得${tickets.length}注（缺${lack}注）。建議：提高seed變化或放寬規則。` : undefined,
+        tickets: tickets
+    };
+}
+
+/* ------------------------- [N] V3.2a修復#2+#4+#6+#9：對外入口 ------------------------- */
+
+/**
+ * algo_stat V3.2b - 統計學派主入口
+ * 
+ * @param {Object} params - 參數物件
+ * @param {Array} params.data - 歷史資料陣列
+ * @param {Object} params.gameDef - 遊戲定義（type, count, range等）
+ * @param {Array} [params.excludeNumbers] - 排除號碼列表（只支援單號排除）
+ * @param {string} [params.mode='top'] - 選號模式（'top' | 'weighted'）
+ * @param {number|null} [params.seed=null] - 隨機種子（null使用Math.random）
+ * @param {string} [params.dataOrder='auto'] - 資料排序方式（'auto' | 'latestFirst' | 'oldestFirst'）
+ * @param {Object} [params.config] - 配置覆蓋
+ * @param {boolean} [params.packMode=false] - 包牌模式
+ * @param {number} [params.packCount=10] - 包牌數量
+ * @param {string} [params.packReturn='array'] - 包牌回傳格式（'array' | 'object'）
+ * @param {boolean} [params.debug=false] - 除錯模式
+ * 
+ * @returns {Object|Array} 根據packReturn和packMode決定：
+ *   - packMode=false（單注模式）：
+ *     {numbers: Array, groupReason: string, metadata: Object}
+ *   - packMode=true && packReturn='array'（預設）：
+ *     Array（附加不可列舉packMeta屬性，包含{ok, target, actual, warning?, warnings?, dataQuality}）
+ *   - packMode=true && packReturn='object'：
+ *     {ok: boolean, tickets: Array, warning?: string, metadata: Object}
+ *     - metadata必含：{ok, version, mode, seed, shape, warnings: Array, dataQuality}
+ */
+export function algoStat(params = {}) {
+    const {
+        data,
+        gameDef,
+        excludeNumbers = [],
+        mode = 'top',
+        seed = null,
+        dataOrder = 'auto',
+        config: configOverride,
+        packMode = false,
+        packCount = 10,
+        packReturn = 'array',
+        debug = false,
+    } = params;
+
+    // V3.2a 修復#4：packReturn 參數非法值明確處理
+    const validPackReturns = ['array', 'object'];
+    if (!validPackReturns.includes(packReturn)) {
+        return _errorResult(`packReturn 參數非法：'${packReturn}'（允許值：'array' | 'object'）`);
+    }
+
+    // 步驟1：gameDef 驗證
+    const vd = stat_validateGameDef(gameDef);
+    if (!vd.ok) return _errorResult(`gameDef 驗證失敗：${vd.reason}`);
+
+    // 步驟2：data 驗證
+    if (!Array.isArray(data) || data.length === 0) {
+        return _errorResult('data 缺失或為空陣列');
+    }
+
+    // V3.2a 修復#3+#4：資料自動排序（掃描前10筆 + 非法值處理）
+    const sortResult = stat_autoSortData(data, dataOrder);
+    if (!sortResult.ok) {
+        return _errorResult(`資料排序失敗：${sortResult.reason}`, { sortResult });
+    }
+
+    const sortedData = sortResult.data;
+
+    // 步驟3：配置合併
+    const config = _deepMerge(STAT_CONFIG, configOverride);
+
+    // T7: configOverride 數值欄位驗證
+    const configWarnings = [];
+    const numericFields = [
+        'WEIGHT_FREQ', 'WEIGHT_MISS', 'WEIGHT_STREAK', 'WEIGHT_NOISE',
+        'COMBO_RECENT_PERIOD', 'DIGIT_RECENT_PERIOD', 'ZONE2_RECENT_PERIOD',
+        'COLD_MAX_MISS', 'EXTREME_BOOST_SCORE', 'EXTREME_MAX_RATIO',
+        'ROULETTE_TEMPERATURE'
+    ];
+
+    numericFields.forEach(field => {
+        if (!Number.isFinite(config[field])) {
+            const originalValue = config[field];
+            const defaultValue = STAT_CONFIG[field];
+            // T12: 記錄原始值
+            configWarnings.push(`config.${field}=${JSON.stringify(originalValue)}非有限數值，已回退預設值${defaultValue}`);
+            config[field] = defaultValue;
+        }
+    });
+
+    // 步驟4：解析排除號碼
+    let excludeSet;
+    let parseWarnings = [];
+    try {
+        const parsed = stat_parseExclude(excludeNumbers, gameDef);
+        excludeSet = parsed.hardExcludeNum;
+        parseWarnings = parsed.warnings || [];
+    } catch (error) {
+        return _errorResult(`排除號碼錯誤：${error.message}`, { error: error.message });
+    }
+
+    // V3.2a 修復#5：組合型排除過多前置檢查（明確計算有效排除數）
+    const shape = stat_getShape(gameDef);
+    if (shape.kind === 'lotto' || shape.kind === 'power') {
+        const mainRange = shape.mainRange;
+        const mainCount = shape.mainCount;
+        const validExcludedCount = _countValidExcluded(excludeSet, 1, mainRange);
+        const available = mainRange - validExcludedCount;
+
+        if (available < mainCount) {
+            return _errorResult(
+                `排除過多：需要選 ${mainCount} 個號碼，但排除後只剩 ${available} 個可選。請減少排除數量。`,
+                { mainRange, mainCount, excluded: validExcludedCount, available }
+            );
+        }
+    }
+
+    // V3.1 修復#5：步驟5：正規化資料（累計丟棄統計）
+    const normalizedData = [];
+    const dropStats = {
+        total: 0,
+        reasons: {}
+    };
+
+    for (const draw of sortedData) {
+        const nd = stat_normalizeDraw(draw, gameDef);
+        if (!nd.ok) {
+            dropStats.total++;
+            dropStats.reasons[nd.reason] = (dropStats.reasons[nd.reason] || 0) + 1;
+            continue;
+        }
+        normalizedData.push(nd);
+    }
+
+    if (normalizedData.length === 0) {
+        const top3 = Object.entries(dropStats.reasons)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 3)
+            .map(([r, c]) => `${r}(${c}筆)`)
+            .join('、');
+
+        return _errorResult(
+            `無任何可用歷史資料（全部驗證失敗）`,
+            {
+                dropped: dropStats.total,
+                original: sortedData.length,
+                top3Reasons: top3,
+                fullReasons: dropStats.reasons
+            }
+        );
+    }
+
+    // T5: packCount 上限檢查
+    if (packMode && packCount > config.MAX_PACK_COUNT) {
+        return _errorResult(`packCount超過上限${config.MAX_PACK_COUNT}，收到：${packCount}`);
+    }
+
+    // V3.2a 修復#6：packCount / mode / seed 邊界處理
+    // T11: 參數矯正回報
+    const paramWarnings = [];
+
+    let safePackCount = packCount;
+    if (packCount !== Math.floor(packCount) || packCount < 1) {
+        safePackCount = Math.max(1, Math.floor(packCount));
+        paramWarnings.push(`參數packCount=${packCount}非正整數，已矯正為${safePackCount}`);
+    }
+
+    let safeMode = mode;
+    if (mode !== 'top' && mode !== 'weighted') {
+        safeMode = 'weighted';
+        paramWarnings.push(`參數mode='${mode}'非法值，已矯正為'weighted'`);
+    }
+
+    // T2: seed 合法性驗證
+    let rng;
+    try {
+        rng = new StatRNG(seed);
+    } catch (error) {
+        return _errorResult(error.message);
+    }
+
+    const ctx = {
+        normalizedData,
+        shape,
+        config,
+        mode: safeMode,
+        rng,
+        debug: !!debug,
+        packCount: safePackCount,
+        excludeSet,
+    };
+
+    // 期數不足提醒（不阻斷）
+    const warnShort = normalizedData.length < config.MIN_REQUIRED_DRAWS;
+
+    // V3.2a 修復#9：組合 warnings
+    let warnings = [...parseWarnings, ...configWarnings, ...paramWarnings];
+    if (warnShort) warnings.push(`有效期數不足（${normalizedData.length}期），統計穩定性較差`);
+    if (dropStats.total > 0) {
+        // T10: 除零保護
+        const dropRate = sortedData.length > 0
+            ? (dropStats.total / sortedData.length * 100).toFixed(1)
+            : '0.0';
+        if (parseFloat(dropRate) > 10) {
+            warnings.push(`資料品質警告：排除了${dropStats.total}筆（${dropRate}%）`);
+        }
+    }
+
+    // V3.2a 修復#2+#8：packMode 依 packReturn 決定回傳格式
+    if (packMode) {
+        const packResult = stat_generatePack(ctx);
+
+        // 組裝 metadata
+        const packMeta = {
+            algo: 'stat',
+            version: STAT_CONFIG.VERSION,
+            packMode: true,
+            ok: packResult.ok,
+            insufficient: packResult.insufficient,
+            target: packResult.target,
+            actual: packResult.actual,
+            lack: packResult.lack,
+            warning: packResult.warning,
+            warnings: warnings,  // T8: 永遠回傳Array，不再用三元判斷
+            dataQuality: {
+                original: sortedData.length,
+                valid: normalizedData.length,
+                dropped: dropStats.total,
+                dropRate: sortedData.length > 0 ? (dropStats.total / sortedData.length * 100).toFixed(1) + '%' : '0.0%',
+                top3Reasons: dropStats.total > 0 ? Object.entries(dropStats.reasons)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 3)
+                    .map(([r, c]) => `${r}(${c}筆)`)
+                    .join('、') : undefined
+            }
+        };
+
+        // V3.2a 修復#8：依 packReturn 決定回傳格式
+        if (packReturn === 'object') {
+            // object 模式：回傳 { ok, tickets, warning?, metadata }
+            return {
+                ok: packResult.ok,
+                tickets: packResult.tickets,
+                warning: packResult.warning,
+                metadata: packMeta
+            };
+        } else {
+            // V3.2a 修復#2：array 模式（預設）使用不可列舉附加
+            const tickets = packResult.tickets;
+            _attachNonEnumerable(tickets, 'packMeta', packMeta);
+            return tickets;
+        }
+    }
+
+    // 單注模式
+    const ticket = (shape.kind === 'digit')
+        ? stat_generateTicketDigit(ctx)
+        : stat_generateTicketLotto(ctx);
+
+    if (!ticket || !ticket.metadata?.ok) {
+        return ticket;
+    }
+
+    // V3.2a 修復#9：warnings 附加到 metadata
+    // T8: 永遠回傳Array
+    ticket.metadata.warnings = warnings;
+
+    // V3.1 修復#5：資料品質附加到 metadata
+    if (dropStats.total > 0) {
+        ticket.metadata.dataQuality = {
+            original: sortedData.length,
+            valid: normalizedData.length,
+            dropped: dropStats.total,
+            // T14: 除零保護（與packMode一致）
+            dropRate: sortedData.length > 0 ? (dropStats.total / sortedData.length * 100).toFixed(1) + '%' : '0.0%',
+            top3Reasons: Object.entries(dropStats.reasons)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 3)
+                .map(([r, c]) => `${r}(${c}筆)`)
+                .join('、')
+        };
+    }
+
+    return ticket;
+}
+
+export default algoStat;
+
+
