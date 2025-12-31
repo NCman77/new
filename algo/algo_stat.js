@@ -1,9 +1,12 @@
 /**
- * algo_stat.js V3.2b - The Statistical Analysis Algorithm (統計學派 - 強化健全性版)
+ * algo_stat.js V3.2c - The Statistical Analysis Algorithm (統計學派 - 強化健全性版)
  * 
  * ==========================================
  * 版本資訊
  * ==========================================
+ * V3.2c (2025-12-31) - 調試友善性增強
+ * - ✅ [T16-P2] console.log輸出（學派名稱/期數/模式/seed狀態）
+ * 
  * V3.2b (2025-12-31) - Hardening & Robustness Enhancements
  * - ✅ [T1-P0] 排除值整數化驗證（_countValidExcluded, stat_parseExclude）
  * - ✅ [T2-P0] seed非法值硬性錯誤（StatRNG, algoStat）
@@ -123,7 +126,7 @@
 /* ------------------------- [A] 配置區 ------------------------- */
 
 export const STAT_CONFIG = {
-    VERSION: '3.2b',
+    VERSION: '3.2c',
 
     // 共通配置
     RECENT_REPEAT: 3,              // 連莊/重複檢測窗口（近 K 期）
@@ -1535,6 +1538,14 @@ export function algoStat(params = {}) {
     // 步驟2：data 驗證
     if (!Array.isArray(data) || data.length === 0) {
         return _errorResult('data 缺失或為空陣列');
+    }
+
+    // ===== T16: 統計學派 console.log 輸出（V3.2c新增）=====
+    console.log(`[Stat] 統計學派 | ${gameDef.type} | ${data?.length ?? 0}期`);
+    if (packMode) {
+        console.log(`[Stat] 包牌模式: 目標${packCount}注 | mode=${mode} | seed=${seed ?? 'random'}`);
+    } else {
+        console.log(`[Stat] 單注模式: mode=${mode} | seed=${seed ?? 'random'}`);
     }
 
     // V3.2a 修復#3+#4：資料自動排序（掃描前10筆 + 非法值處理）
