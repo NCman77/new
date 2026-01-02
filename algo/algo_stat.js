@@ -1400,7 +1400,7 @@ function stat_generateTicketLotto(ctx) {
  * V3.1：數字型單注生成（傳入mode參數）
  */
 function stat_generateTicketDigit(ctx) {
-    const { normalizedData, shape, config, mode, rng, debug, excludeSet } = ctx;
+    const { normalizedData, shape, config, mode, rng, debug, excludeSet, setIndex = 0 } = ctx;
 
     const globalStats = stat_buildGlobalStatsDigit(normalizedData, shape, config, excludeSet);
     const scoredByPos = stat_scoreDigit(globalStats.posStats, config, mode, rng.fork('digit'), debug);
@@ -1411,7 +1411,10 @@ function stat_generateTicketDigit(ctx) {
 
         let picked;
         if (mode === 'top') {
-            picked = stat_selectTop(items, 1, 'digit');
+            // 根據 setIndex 選取第 N 名（0=Top1, 1=Top2, ...）
+            const sortedItems = items.slice().sort((a, b) => b.score - a.score);
+            const targetIndex = Math.min(setIndex, sortedItems.length - 1);
+            picked = [sortedItems[targetIndex]];
         } else {
             picked = stat_selectRoulette(items, 1, rng.fork(`pos${pos}`), config);
         }
@@ -1744,6 +1747,7 @@ export function algoStat(params = {}) {
         packCount = 10,
         packReturn = 'array',
         debug = false,
+        setIndex = 0,  // 指定選取第幾名（0=Top1, 1=Top2, ...）
     } = params;
 
     // V3.2a 修復#4：packReturn 參數非法值明確處理
@@ -1956,6 +1960,7 @@ export function algoStat(params = {}) {
         debug: !!debug,
         packCount: safePackCount,
         excludeSet,
+        setIndex,  // 傳遞選取第幾名的索引
     };
 
     // 期數不足提醒（不阻斷）
