@@ -1,9 +1,16 @@
 /**
- * algo_stat.js V3.4.3 - The Statistical Analysis Algorithm (統計學派 - 強化健全性版)
+ * algo_stat.js V3.5.0 - The Statistical Analysis Algorithm (統計學派 - 獨立性版)
  * 
  * ==========================================
  * 版本資訊
  * ==========================================
+ * V3.5.0 (2026-01-02) - 統計學派獨立性重構（P0級別）
+ * - ✅ 包牌邏輯從「模仿AI學派」改為「頻率稀釋法」
+ * - ✅ 移除DECAY_FACTOR依賴，使用freq/miss/repeatInK調整
+ * - ✅ 新增stat_normalize輔助函數
+ * - ✅ 新增stat_packDigit_Independent函數
+ * - ✅ 建立統計學派獨立性，與AI學派區隔
+ * 
  * V3.4.3 (2026-01-02) - 參數相容層修復（P1級別）
  * - ✅ 新增mode別名映射：strict→top, random→weighted, pack_1→top
  * - ✅ 新增pack參數對齊：targetCount→packCount
@@ -154,7 +161,7 @@
 /* ------------------------- [A] 配置區 ------------------------- */
 
 export const STAT_CONFIG = {
-    VERSION: '3.4.3',
+    VERSION: '3.5.0',
 
     // 共通配置
     RECENT_REPEAT: 3,              // 連莊/重複檢測窗口（近 K 期）
@@ -197,6 +204,17 @@ export const STAT_CONFIG = {
 
     // V3.2b T5：包牌數量上限（資源保護）
     MAX_PACK_COUNT: 200,
+    MIN_PACK_COUNT: 1,
+
+    // ===== V3.5.0: 包牌策略配置（統計學派獨立性）=====
+    PACK_STRATEGY: {
+        // 頻率稀釋參數（freq -= N）
+        FREQ_DILUTION: 1,
+        // 遺漏稀釋參數（miss -= N）
+        MISS_DILUTION: 2,
+        // 重置近期重複標記（repeatInK = 0）
+        RESET_REPEAT: true,
+    },
 };
 
 /* ------------------------- [B] 可重現 RNG ------------------------- */
@@ -1523,11 +1541,26 @@ function stat_generatePack(ctx) {
 }
 
 /**
- * T19: Top模式確定性包牌（分數衰減法）
+ * V3.5.0：Min-Max正規化輔助函數
+ * 用途：將陣列數值正規化到[0, 1]區間
+ * @param {number[]} values - 輸入數值陣列
+ * @returns {number[]} 正規化後的陣列
+ */
+function stat_normalize(values) {
+    if (!values || values.length === 0) return [];
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    if (max === min) return values.map(() => 0.5);  // 防止除以零
+    return values.map(v => (v - min) / (max - min));
+}
+
+/**
+ * V3.4：包牌生成（確定性邏輯 - 純複用）
+ * V3.5.0更新：改用頻率稀釋法（統計學派獨立性）
  */
 function stat_generatePackDeterministic(ctx) {
     const { normalizedData, shape, config, rng, packCount, excludeSet, debug } = ctx;
-    const DECAY_FACTOR = 0.7;  // 衰減係數（模仿AI學派）
+    // V3.5.0：不再使用DECAY_FACTOR（已移除AI學派依賴）
     const tickets = [];
 
     if (shape.kind === 'digit') {
@@ -1553,10 +1586,19 @@ function stat_generatePackDeterministic(ctx) {
 
                 const chosen = picked[0];
 
-                // 降低該數字的分數
+                // V3.5.0：頻率稀釋法（與Lotto/Power一致）
                 const idx = currentScoresByPos[pos].findIndex(it => it.digit === chosen.digit);
                 if (idx !== -1) {
-                    currentScoresByPos[pos][idx].score *= DECAY_FACTOR;
+                    const item = currentScoresByPos[pos][idx];
+                    item.freq = Math.max(0, item.freq - config.PACK_STRATEGY.FREQ_DILUTION);
+                    item.miss = Math.max(0, item.miss - config.PACK_STRATEGY.MISS_DILUTION);
+                    if (config.PACK_STRATEGY.RESET_REPEAT) item.repeatInK = 0;
+                    // 重新計算score
+                    const wF = config.WEIGHT_FREQ;
+                    const wM = config.WEIGHT_MISS;
+                    const wS = config.WEIGHT_STREAK;
+                    const wN = config.WEIGHT_NOISE;
+                    item.score = wF * item.freq + wM * item.miss + wS * item.repeatInK + wN * item.noise;
                 }
 
                 digits.push(chosen);
@@ -1584,12 +1626,17 @@ function stat_generatePackDeterministic(ctx) {
                     if (sortedItems.length >= 2) {
                         digits[minPos] = sortedItems[1];
 
-                        // 更新該數字的分數（因為被選中了）
+                        // V3.5.0：更新該數字的分數（頻率稀釋法）
                         const idxToDecay = currentScoresByPos[minPos].findIndex(
                             it => it.digit === sortedItems[1].digit
                         );
                         if (idxToDecay !== -1) {
-                            currentScoresByPos[minPos][idxToDecay].score *= DECAY_FACTOR;
+                            const item = currentScoresByPos[minPos][idxToDecay];
+                            item.freq = Math.max(0, item.freq - config.PACK_STRATEGY.FREQ_DILUTION);
+                            item.miss = Math.max(0, item.miss - config.PACK_STRATEGY.MISS_DILUTION);
+                            if (config.PACK_STRATEGY.RESET_REPEAT) item.repeatInK = 0;
+                            const wF = config.WEIGHT_FREQ, wM = config.WEIGHT_MISS, wS = config.WEIGHT_STREAK, wN = config.WEIGHT_NOISE;
+                            item.score = wF * item.freq + wM * item.miss + wS * item.repeatInK + wN * item.noise;
                         }
                     }
                 }
@@ -1631,11 +1678,26 @@ function stat_generatePackDeterministic(ctx) {
                 numbers.push({ val: z.num, tag: stat_tagLotto(z, config, config.ZONE2_RECENT_PERIOD, 'zone2') });
             }
 
-            // 降低已選號碼的分數
+            // V3.5.0：頻率稀釋法（統計學派獨立性）
+            // 不再使用AI學派的 score *= 0.7
+            // 改用統計指標調整：freq -= 1, miss -= 2, repeatInK = 0
             pickedMain.forEach(it => {
                 const idx = currentScores.findIndex(item => item.num === it.num);
                 if (idx !== -1) {
-                    currentScores[idx].score *= DECAY_FACTOR;
+                    const item = currentScores[idx];
+                    // 稀釋頻率和遺漏
+                    item.freq = Math.max(0, item.freq - config.PACK_STRATEGY.FREQ_DILUTION);
+                    item.miss = Math.max(0, item.miss - config.PACK_STRATEGY.MISS_DILUTION);
+                    // 重置近期重複標記
+                    if (config.PACK_STRATEGY.RESET_REPEAT) {
+                        item.repeatInK = 0;
+                    }
+                    // 重新計算score（使用四因子公式）
+                    const wF = config.WEIGHT_FREQ;
+                    const wM = config.WEIGHT_MISS;
+                    const wS = config.WEIGHT_STREAK;
+                    const wN = config.WEIGHT_NOISE;
+                    item.score = wF * item.freq + wM * item.miss + wS * item.repeatInK + wN * item.noise;
                 }
             });
 
