@@ -1,9 +1,14 @@
 /**
- * algo_stat.js V3.4.2 - The Statistical Analysis Algorithm (統計學派 - 強化健全性版)
+ * algo_stat.js V3.4.3 - The Statistical Analysis Algorithm (統計學派 - 強化健全性版)
  * 
  * ==========================================
  * 版本資訊
  * ==========================================
+ * V3.4.3 (2026-01-02) - 參數相容層修復（P1級別）
+ * - ✅ 新增mode別名映射：strict→top, random→weighted, pack_1→top
+ * - ✅ 新增pack參數對齊：targetCount→packCount
+ * - ✅ 相容prediction-engine標準接口，與AI/Pattern學派一致
+ * 
  * V3.4.2 (2026-01-02) - 註解完善修復（P2-P3級別）
  * - ✅ [C1-P2] 統一groupReason格式說明註解（stat_generateTicketDigit）
  * - ✅ [C2-P3] 補充包牌groupReason格式說明註解（Lotto/Power段落）
@@ -149,7 +154,7 @@
 /* ------------------------- [A] 配置區 ------------------------- */
 
 export const STAT_CONFIG = {
-    VERSION: '3.4.2',
+    VERSION: '3.4.3',
 
     // 共通配置
     RECENT_REPEAT: 3,              // 連莊/重複檢測窗口（近 K 期）
@@ -1871,11 +1876,55 @@ export function algoStat(params = {}) {
         paramWarnings.push(`參數packCount=${packCount}非正整數，已矯正為${safePackCount}`);
     }
 
+    // ============================================================
+    // Mode 別名映射（相容 prediction-engine 標準接口）
+    // 根因：prediction-engine 使用 'strict'/'random'/'pack_*'
+    //      AI/Pattern 學派都接受這套標準接口
+    //      Stat 原本只認 'top'/'weighted'，導致被矯正成隨機
+    // 修復：加入別名映射，使 Stat 接受標準接口
+    // ============================================================
     let safeMode = mode;
-    if (mode !== 'top' && mode !== 'weighted') {
+
+    // 別名映射規則
+    if (mode === 'strict') {
+        // 觸發條件：prediction-engine 傳入嚴選模式
+        // 映射目標：top（確定性排名選號）
+        // 預期行為：同資料連續執行結果相同
+        safeMode = 'top';
+    } else if (mode === 'random') {
+        // 觸發條件：prediction-engine 傳入隨機模式
+        // 映射目標：weighted（加權輪盤抽樣）
+        // 預期行為：允許結果變化
+        safeMode = 'weighted';
+    } else if (typeof mode === 'string' && mode.startsWith('pack_')) {
+        // 觸發條件：prediction-engine 傳入包牌模式（pack_1, pack_2 等）
+        // 映射策略：pack_1 使用確定性 top，其他依需求決定
+        if (mode === 'pack_1') {
+            safeMode = 'top';  // 確定性包牌
+        } else {
+            // 目前統一映射為 top（確定性）
+            safeMode = 'top';
+        }
+    } else if (mode !== 'top' && mode !== 'weighted') {
+        // 觸發條件：未知的 mode 值
+        // 處理方式：矯正為 weighted 並記錄警告
         safeMode = 'weighted';
         paramWarnings.push(`參數mode='${mode}'非法值，已矯正為'weighted'`);
     }
+    // ============================================================
+
+    // ============================================================
+    // Pack 參數對齊（targetCount → packCount）
+    // 根因：prediction-engine 使用 targetCount（統一參數名）
+    //      Stat 內部使用 packCount（包牌注數）
+    //      若未對齊，Stat 會使用預設值而非指定值
+    // 修復：當包牌模式啟用時，將 targetCount 映射為 packCount
+    // ============================================================
+    if (packMode && packCount === undefined && targetCount !== undefined) {
+        packCount = targetCount;  // 對齊參數（例如：5 筆）
+        safePackCount = packCount;  // 同步更新 safePackCount
+    }
+    // ============================================================
 
     // ===== T18 (V3.4): 已移除T17自動seed生成（設計缺陷）=====
     // V3.3的T17邏輯（已廢棄）：
